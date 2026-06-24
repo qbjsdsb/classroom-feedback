@@ -120,16 +120,23 @@ ${customReq}
 ## 需要包含的模块
 ${moduleInstructions}
 
-## 输出格式
-请按以下格式输出，每个模块用【模块名】作为标题：
+## 输出格式（必须严格遵守）
+你必须输出合法的 JSON 对象，格式如下：
 
-【课堂内容】
-（内容）
+{
+  "feedback": [
+    { "module": "课堂内容", "content": "（内容）" },
+    { "module": "课堂表现", "content": "（内容）" },
+    { "module": "薄弱环节", "content": "（内容）" },
+    { "module": "课后作业", "content": "（内容）" }
+  ]
+}
 
-【课堂表现】
-（内容）
-
-...以此类推`;
+要求：
+- 必须输出合法的 JSON，不要输出任何 JSON 之外的内容（不要 markdown 代码块标记）
+- module 必须是上述列出的模块名之一
+- content 为该模块的反馈内容
+- 只输出请求的模块，不要额外添加模块`;
 
         const baseUrl = Storage.getApiBaseUrl() || 'https://api.deepseek.com';
         try {
@@ -142,11 +149,12 @@ ${moduleInstructions}
                 body: JSON.stringify({
                     model: 'deepseek-v4-flash',
                     messages: [
-                        { role: 'system', content: '你是一位经验丰富的教育培训老师，擅长撰写专业、有针对性的课堂反馈。你严格遵守姓名处理规则，不会创造不存在的昵称。' },
+                        { role: 'system', content: '你是一位经验丰富的教育培训老师，擅长撰写专业、有针对性的课堂反馈。你严格遵守姓名处理规则，不会创造不存在的昵称。你必须以 JSON 格式输出结果。' },
                         { role: 'user', content: prompt }
                     ],
                     temperature: 0.7,
-                    max_tokens: this.MAX_OUTPUT_TOKENS
+                    max_tokens: this.MAX_OUTPUT_TOKENS,
+                    response_format: { type: 'json_object' }
                 })
             });
 
@@ -442,7 +450,60 @@ ${segment}
         return (mod && mod.description) ? mod.description : '生成相关内容';
     }
 
+    /**
+     * 解析反馈内容：优先 JSON 解析，降级到正则解析
+     * @param {string} content - AI返回的原始内容
+     * @param {string[]} modules - 期望的模块名列表
+     * @returns {Array<{module: string, content: string}>}
+     */
     static parseFeedback(content, modules) {
+        // 优先尝试 JSON 解析
+        const jsonResult = this._tryParseFeedbackJSON(content, modules);
+        if (jsonResult) return jsonResult;
+
+        // 降级：正则解析（兼容旧格式和非JSON输出）
+        return this._parseFeedbackRegex(content, modules);
+    }
+
+    /**
+     * 尝试从内容中解析 JSON 格式的反馈
+     */
+    static _tryParseFeedbackJSON(content, modules) {
+        try {
+            // 去除可能的 markdown 代码块标记
+            let jsonStr = content.trim();
+            const codeBlockMatch = jsonStr.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+            if (codeBlockMatch) {
+                jsonStr = codeBlockMatch[1].trim();
+            }
+
+            const parsed = JSON.parse(jsonStr);
+            if (!parsed || !Array.isArray(parsed.feedback)) return null;
+
+            const feedback = [];
+            for (const item of parsed.feedback) {
+                if (item && typeof item.module === 'string' && typeof item.content === 'string') {
+                    // 只接受已知模块名
+                    const trimmedModule = item.module.trim();
+                    if (modules.includes(trimmedModule) && item.content.trim()) {
+                        feedback.push({
+                            module: trimmedModule,
+                            content: item.content.trim()
+                        });
+                    }
+                }
+            }
+
+            return feedback.length > 0 ? feedback : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * 正则解析反馈（旧格式降级方案）
+     */
+    static _parseFeedbackRegex(content, modules) {
         const feedback = [];
         const lines = content.split('\n');
         let currentModule = null;
@@ -654,31 +715,37 @@ ${moduleInstructions}
 - 正确的例子："请同学们在课后独立完成..."、"本次作业要求大家..."
 
 ## 输出格式（必须严格遵守）
-请为每位学生生成独立的反馈，每位学生之间用分隔线隔开。格式如下：
+你必须输出合法的 JSON 对象，格式如下：
 
-===== 学生：王小明 =====
-【课堂内容】
-（客观描述整节课的教学内容，不出现任何学生姓名）
+{
+  "students": [
+    {
+      "studentName": "王小明",
+      "feedback": [
+        { "module": "课堂内容", "content": "（客观描述整节课的教学内容，不出现任何学生姓名）" },
+        { "module": "课堂表现", "content": "（针对小明的课堂表现反馈，可以使用姓名）" },
+        { "module": "薄弱环节", "content": "（针对小明的薄弱环节反馈，可以使用姓名）" },
+        { "module": "课后作业", "content": "（客观布置作业，面向全体，不出现任何学生姓名）" }
+      ]
+    },
+    {
+      "studentName": "李小红",
+      "feedback": [
+        { "module": "课堂内容", "content": "（与上面完全相同的客观描述）" },
+        { "module": "课堂表现", "content": "（针对小红的课堂表现反馈）" },
+        { "module": "薄弱环节", "content": "（针对小红的薄弱环节反馈）" },
+        { "module": "课后作业", "content": "（与上面完全相同的客观作业）" }
+      ]
+    }
+  ]
+}
 
-【课堂表现】
-（针对小明的课堂表现反馈，可以使用姓名）
-
-【薄弱环节】
-（针对小明的薄弱环节反馈，可以使用姓名）
-
-【课后作业】
-（客观布置作业，面向全体，不出现任何学生姓名）
-
-===== 学生：李小红 =====
-【课堂内容】
-（客观描述整节课的教学内容，不出现任何学生姓名）
-
-...
-
-**注意：**
+要求：
+- 必须输出合法的 JSON，不要输出任何 JSON 之外的内容（不要 markdown 代码块标记）
 - 必须为每位学生都生成完整反馈
-- 分隔线必须使用"===== 学生：姓名 ====="格式
-- 每位学生内部的模块用【模块名】标记
+- studentName 必须使用学生的全名
+- module 必须是上述列出的模块名之一
+- content 为该模块的反馈内容
 - 【课堂内容】和【课后作业】对所有学生应该是**完全相同**的客观描述`
 
         const baseUrl = Storage.getApiBaseUrl() || 'https://api.deepseek.com';
@@ -692,11 +759,12 @@ ${moduleInstructions}
                 body: JSON.stringify({
                     model: 'deepseek-v4-flash',
                     messages: [
-                        { role: 'system', content: '你是一位经验丰富的教育培训老师，擅长为多位学生分别撰写专业、有针对性的课堂反馈。你严格遵守姓名处理规则，不会混淆不同学生的表现。' },
+                        { role: 'system', content: '你是一位经验丰富的教育培训老师，擅长为多位学生分别撰写专业、有针对性的课堂反馈。你严格遵守姓名处理规则，不会混淆不同学生的表现。你必须以 JSON 格式输出结果。' },
                         { role: 'user', content: prompt }
                     ],
                     temperature: 0.7,
-                    max_tokens: this.MAX_OUTPUT_TOKENS
+                    max_tokens: this.MAX_OUTPUT_TOKENS,
+                    response_format: { type: 'json_object' }
                 })
             });
 
@@ -721,13 +789,97 @@ ${moduleInstructions}
     }
 
     /**
-     * 解析小组反馈内容，提取每位学生的独立反馈
+     * 解析小组反馈内容：优先 JSON 解析，降级到正则解析
      * @param {string} content - AI返回的原始内容
      * @param {string[]} studentNames - 学生姓名列表（用于校验）
      * @param {string[]} modules - 模块列表
      * @returns {Array<{studentName: string, feedback: Array<{module: string, content: string}>}>}
      */
     static parseGroupFeedback(content, studentNames, modules) {
+        // 优先尝试 JSON 解析
+        const jsonResult = this._tryParseGroupFeedbackJSON(content, studentNames, modules);
+        if (jsonResult) return jsonResult;
+
+        // 降级：正则解析（兼容旧格式和非JSON输出）
+        return this._parseGroupFeedbackRegex(content, studentNames, modules);
+    }
+
+    /**
+     * 尝试从内容中解析 JSON 格式的小组反馈
+     */
+    static _tryParseGroupFeedbackJSON(content, studentNames, modules) {
+        try {
+            // 去除可能的 markdown 代码块标记
+            let jsonStr = content.trim();
+            const codeBlockMatch = jsonStr.match(/^```(?:json)?\s*\n?([\s\S]*?)\n?\s*```$/);
+            if (codeBlockMatch) {
+                jsonStr = codeBlockMatch[1].trim();
+            }
+
+            const parsed = JSON.parse(jsonStr);
+            if (!parsed || !Array.isArray(parsed.students)) return null;
+
+            const result = [];
+            for (const student of parsed.students) {
+                if (!student || typeof student.studentName !== 'string' || !Array.isArray(student.feedback)) {
+                    continue;
+                }
+
+                const feedback = [];
+                for (const item of student.feedback) {
+                    if (item && typeof item.module === 'string' && typeof item.content === 'string') {
+                        const trimmedModule = item.module.trim();
+                        if (modules.includes(trimmedModule) && item.content.trim()) {
+                            feedback.push({
+                                module: trimmedModule,
+                                content: item.content.trim()
+                            });
+                        }
+                    }
+                }
+
+                if (feedback.length > 0) {
+                    result.push({
+                        studentName: student.studentName.trim(),
+                        feedback
+                    });
+                }
+            }
+
+            if (result.length === 0) return null;
+
+            // 确保结果包含所有学生（AI可能漏掉某个学生）
+            return this._ensureAllStudents(result, studentNames, modules);
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * 确保结果包含所有学生，缺失的学生补上空反馈
+     */
+    static _ensureAllStudents(result, studentNames, modules) {
+        const foundNames = result.map(r => r.studentName);
+        for (const name of studentNames) {
+            // 模糊匹配：仅允许AI省略姓氏，不允许短名匹配长名
+            const exists = foundNames.some(fn => fn === name || fn.endsWith(name) || name.endsWith(fn));
+            if (!exists) {
+                result.push({
+                    studentName: name,
+                    feedback: modules.map(m => ({
+                        module: m,
+                        content: '（本节课未获取到该学生的相关信息）'
+                    }))
+                });
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 正则解析小组反馈（旧格式降级方案）
+     */
+    static _parseGroupFeedbackRegex(content, studentNames, modules) {
         // 尝试按分隔线分割：===== 学生：姓名 =====
         // 也支持 ===== 姓名 ===== 的简化格式
         const separatorRegex = /={3,}\s*(?:学生[：:]\s*)?(.+?)\s*={3,}/g;
@@ -872,24 +1024,8 @@ ${moduleInstructions}
             });
         }
 
-        // 确保结果包含所有学生
-        // 如果AI漏掉了某个学生，补上空反馈
-        const foundNames = result.map(r => r.studentName);
-        for (const name of studentNames) {
-            // 检查是否已存在（模糊匹配：仅允许AI省略姓氏，不允许短名匹配长名）
-            const exists = foundNames.some(fn => fn === name || fn.endsWith(name) || name.endsWith(fn));
-            if (!exists) {
-                result.push({
-                    studentName: name,
-                    feedback: modules.map(m => ({
-                        module: m,
-                        content: '（本节课未获取到该学生的相关信息）'
-                    }))
-                });
-            }
-        }
-
-        return result;
+        // 确保结果包含所有学生（复用公共方法）
+        return this._ensureAllStudents(result, studentNames, modules);
     }
 }
 
