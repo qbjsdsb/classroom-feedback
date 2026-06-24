@@ -231,6 +231,18 @@ class SettingsPage {
                     </div>
                 </section>
 
+                <!-- Prompt 模板库 -->
+                <section class="settings-group">
+                    <h3>📋 Prompt 模板库</h3>
+                    <p class="hint-text" style="margin-bottom:10px;">保存和管理可复用的 Prompt 模板，在生成反馈时快速应用</p>
+                    <div style="display:flex;gap:8px;margin-bottom:12px;">
+                        <button id="btn-add-prompt-template" class="secondary-btn" style="flex:1;">+ 新建模板</button>
+                    </div>
+                    <div id="prompt-templates-list">
+                        ${this.renderPromptTemplatesList()}
+                    </div>
+                </section>
+
                 <!-- 反馈模块设置 -->
                 <section class="settings-group">
                     <h3>📋 反馈模块</h3>
@@ -405,7 +417,7 @@ class SettingsPage {
                         <span class="manage-item-name">${escapeHtml(s.name)}</span>
                         ${hasTemplate ? '<span style="font-size:0.75rem;color:var(--success);background:rgba(16,185,129,0.1);padding:2px 8px;border-radius:10px;">已配置</span>' : ''}
                     </div>
-                    <textarea 
+                    <textarea
                         class="subject-template-input"
                         data-subject-id="${s.id}"
                         placeholder="例如：数学科目需要强调解题思路、公式推导过程、计算准确性等..."
@@ -414,6 +426,172 @@ class SettingsPage {
                 </div>
             `;
         }).join('');
+    }
+
+    renderPromptTemplatesList() {
+        const templates = store.getPromptTemplates();
+        if (templates.length === 0) {
+            return '<p class="hint-text">暂无模板，点击上方新建</p>';
+        }
+        // 按分类分组
+        const categories = [...new Set(templates.map(t => t.category))];
+        return categories.map(cat => {
+            const catTemplates = templates.filter(t => t.category === cat);
+            return `
+                <details class="settings-collapsible" open style="margin-bottom:10px;">
+                    <summary style="font-size:0.9rem;font-weight:600;">${escapeHtml(cat)} <span style="font-size:0.8rem;color:var(--text-muted);font-weight:normal;">(${catTemplates.length})</span></summary>
+                    <div class="collapsible-content" style="padding-top:8px;">
+                        ${catTemplates.map(t => this._renderPromptTemplateCard(t)).join('')}
+                    </div>
+                </details>
+            `;
+        }).join('');
+    }
+
+    _renderPromptTemplateCard(t) {
+        const preview = t.prompt.length > 80 ? t.prompt.substring(0, 80) + '...' : t.prompt;
+        return `
+            <div class="prompt-template-card" data-template-id="${escapeHtml(t.id)}" style="padding:12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;background:var(--bg);">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                    <span style="font-weight:600;font-size:0.9rem;color:var(--text);">${escapeHtml(t.name)}</span>
+                    ${t.isDefault ? '<span style="font-size:0.7rem;color:var(--primary);background:var(--primary-soft);padding:1px 6px;border-radius:8px;">预置</span>' : ''}
+                </div>
+                ${t.description ? `<p style="font-size:0.8rem;color:var(--text-muted);margin-bottom:4px;">${escapeHtml(t.description)}</p>` : ''}
+                <p style="font-size:0.8rem;color:var(--text-secondary);line-height:1.5;margin-bottom:8px;">${escapeHtml(preview)}</p>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <button class="text-btn prompt-apply-btn" data-template-id="${escapeHtml(t.id)}" title="应用到科目">应用到科目</button>
+                    <button class="text-btn prompt-edit-btn" data-template-id="${escapeHtml(t.id)}">编辑</button>
+                    <button class="text-btn prompt-copy-btn" data-template-id="${escapeHtml(t.id)}" style="color:var(--text-secondary);">复制</button>
+                    ${!t.isDefault ? `<button class="text-btn prompt-delete-btn" data-template-id="${escapeHtml(t.id)}" style="color:var(--danger);">删除</button>` : ''}
+                </div>
+            </div>
+        `;
+    }
+
+    showPromptTemplateForm(template = null) {
+        const isEdit = !!template;
+        const title = isEdit ? '编辑模板' : '新建模板';
+        const categories = ['反馈风格', '家长沟通', '问题导向', '学科特色'];
+
+        UI.showBottomSheet(`
+            <div class="bottom-sheet-header">
+                <h3>${title}</h3>
+            </div>
+            <div class="form-section">
+                <div class="form-group">
+                    <label>模板名称 <span style="color:var(--danger);">*</span></label>
+                    <input type="text" id="pt-name" placeholder="例如：表扬鼓励型" value="${isEdit ? escapeHtml(template.name) : ''}" style="width:100%;padding:12px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:1rem;">
+                </div>
+                <div class="form-group">
+                    <label>描述</label>
+                    <input type="text" id="pt-description" placeholder="简要描述模板用途" value="${isEdit ? escapeHtml(template.description || '') : ''}" style="width:100%;padding:12px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:1rem;">
+                </div>
+                <div class="form-group">
+                    <label>分类</label>
+                    <select id="pt-category" style="width:100%;padding:12px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:1rem;background:var(--surface);color:var(--text);appearance:none;">
+                        ${categories.map(c => `<option value="${c}" ${isEdit && template.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Prompt 内容 <span style="color:var(--danger);">*</span></label>
+                    <textarea id="pt-prompt" placeholder="请输入模板的 Prompt 内容..." style="width:100%;min-height:120px;padding:10px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;font-family:inherit;resize:vertical;">${isEdit ? escapeHtml(template.prompt) : ''}</textarea>
+                </div>
+                <div style="display:flex;gap:10px;">
+                    <button id="btn-pt-cancel" class="secondary-btn" style="flex:1;">取消</button>
+                    <button id="btn-pt-save" class="primary-btn" style="flex:1;">保存</button>
+                </div>
+            </div>
+        `);
+
+        requestAnimationFrame(() => {
+            document.getElementById('btn-pt-cancel')?.addEventListener('click', () => {
+                UI.closeBottomSheet();
+            });
+
+            document.getElementById('btn-pt-save')?.addEventListener('click', () => {
+                const name = document.getElementById('pt-name')?.value.trim();
+                const description = document.getElementById('pt-description')?.value.trim();
+                const category = document.getElementById('pt-category')?.value;
+                const prompt = document.getElementById('pt-prompt')?.value.trim();
+
+                if (!name) {
+                    UI.showToast('请输入模板名称');
+                    return;
+                }
+                if (!prompt) {
+                    UI.showToast('请输入 Prompt 内容');
+                    return;
+                }
+
+                if (isEdit) {
+                    store.updatePromptTemplate(template.id, { name, description, category, prompt });
+                    UI.showToast('模板已更新');
+                } else {
+                    store.addPromptTemplate({ name, description, category, prompt });
+                    UI.showToast('模板已创建');
+                }
+                UI.closeBottomSheet();
+                this.render();
+            });
+        });
+    }
+
+    showApplyTemplateToSubject(templateId) {
+        const subjects = store.getSubjects();
+        const template = store.getPromptTemplateById(templateId);
+        if (!template) return;
+
+        if (subjects.length === 0) {
+            UI.showToast('暂无科目，请先添加科目');
+            return;
+        }
+
+        UI.showBottomSheet(`
+            <div class="bottom-sheet-header">
+                <h3>应用模板到科目</h3>
+            </div>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">将「${escapeHtml(template.name)}」的 Prompt 追加到指定科目的专属模板中</p>
+            <div class="subject-apply-list">
+                ${subjects.map(s => {
+                    const existing = store.getSubjectTemplate(s.id);
+                    return `
+                        <div class="subject-apply-item" data-subject-id="${escapeHtml(s.id)}" style="display:flex;align-items:center;gap:10px;padding:12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;cursor:pointer;transition:background 0.15s;">
+                            <span class="color-dot" style="background:${escapeHtml(s.color)};"></span>
+                            <span style="flex:1;font-weight:500;">${escapeHtml(s.name)}</span>
+                            ${existing && existing.prompt ? '<span style="font-size:0.75rem;color:var(--warning);">已有模板</span>' : '<span style="font-size:0.75rem;color:var(--success);">未配置</span>'}
+                        </div>
+                    `;
+                }).join('')}
+            </div>
+        `);
+
+        requestAnimationFrame(() => {
+            document.querySelectorAll('.subject-apply-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    const subjectId = el.dataset.subjectId;
+                    const subject = store.getSubjectById(subjectId);
+                    if (!subject) return;
+
+                    const existing = store.getSubjectTemplate(subjectId);
+                    const existingPrompt = existing && existing.prompt ? existing.prompt : '';
+                    // 追加模板 prompt 到科目模板
+                    const newPrompt = existingPrompt
+                        ? existingPrompt + '\n\n' + template.prompt
+                        : template.prompt;
+
+                    store.setSubjectTemplate(subjectId, { prompt: newPrompt, updatedAt: new Date().toISOString() });
+                    UI.closeBottomSheet();
+                    UI.showToast(`已应用到 ${subject.name}`);
+                    this.render();
+                });
+                el.addEventListener('mouseenter', () => {
+                    el.style.background = 'var(--primary-soft)';
+                });
+                el.addEventListener('mouseleave', () => {
+                    el.style.background = '';
+                });
+            });
+        });
     }
 
     async checkApiKey() {
@@ -550,6 +728,60 @@ class SettingsPage {
                 Storage.addModule(name.trim());
                 this.render();
             }
+        });
+
+        // Prompt 模板库事件
+        document.getElementById('btn-add-prompt-template')?.addEventListener('click', () => {
+            this.showPromptTemplateForm();
+        });
+
+        // Prompt 模板操作按钮事件委托
+        this.container.querySelectorAll('.prompt-apply-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const templateId = btn.dataset.templateId;
+                this.showApplyTemplateToSubject(templateId);
+            });
+        });
+
+        this.container.querySelectorAll('.prompt-edit-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const templateId = btn.dataset.templateId;
+                const template = store.getPromptTemplateById(templateId);
+                if (template) this.showPromptTemplateForm(template);
+            });
+        });
+
+        this.container.querySelectorAll('.prompt-copy-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const templateId = btn.dataset.templateId;
+                const template = store.getPromptTemplateById(templateId);
+                if (template) {
+                    store.addPromptTemplate({
+                        name: template.name + '（副本）',
+                        description: template.description,
+                        category: template.category,
+                        prompt: template.prompt,
+                        modules: template.modules
+                    });
+                    UI.showToast('模板已复制');
+                    this.render();
+                }
+            });
+        });
+
+        this.container.querySelectorAll('.prompt-delete-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const templateId = btn.dataset.templateId;
+                UI.showConfirm('确定删除这个模板？', () => {
+                    const result = store.deletePromptTemplate(templateId);
+                    if (result) {
+                        UI.showToast('模板已删除');
+                        this.render();
+                    } else {
+                        UI.showToast('预置模板不可删除');
+                    }
+                });
+            });
         });
 
         document.getElementById('btn-save-settings')?.addEventListener('click', async () => {

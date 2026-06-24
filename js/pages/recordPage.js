@@ -34,7 +34,10 @@ class RecordPage {
                 <button class="back-btn" onclick="app.navigate('subject-select')">←</button>
                 <div class="session-info">
                     <div class="student-name">${headerInfo}</div>
-                    <div class="subject-name subject-switch" style="color: ${subject?.color || 'var(--text-muted)'};font-weight:500;" onclick="recordPage.showSubjectSwitcher()">${subtitle} ▾</div>
+                    <div style="display:flex;align-items:center;gap:6px;">
+                        <div class="subject-name subject-switch" style="color: ${subject?.color || 'var(--text-muted)'};font-weight:500;" onclick="recordPage.showSubjectSwitcher()">${subtitle} ▾</div>
+                        <button class="text-btn" onclick="recordPage.showPromptTemplatePicker()" style="font-size:0.8rem;padding:2px 6px;">📋 选择模板</button>
+                    </div>
                 </div>
                 <button id="btn-page-settings" class="icon-btn">⚙️</button>
             </header>
@@ -654,6 +657,75 @@ class RecordPage {
         `;
     }
 
+    /** 选择 Prompt 模板 */
+    showPromptTemplatePicker() {
+        const templates = store.getPromptTemplates();
+        if (templates.length === 0) {
+            UI.showToast('暂无模板，请在设置中创建');
+            return;
+        }
+
+        // 按分类分组
+        const categories = [...new Set(templates.map(t => t.category))];
+        const items = categories.map(cat => {
+            const catTemplates = templates.filter(t => t.category === cat);
+            return `
+                <div style="margin-bottom:12px;">
+                    <div style="font-size:0.8rem;font-weight:600;color:var(--text-muted);padding:4px 0;margin-bottom:4px;">${escapeHtml(cat)}</div>
+                    ${catTemplates.map(t => `
+                        <div class="prompt-template-pick-item" data-template-id="${escapeHtml(t.id)}" style="padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;cursor:pointer;transition:background 0.15s;">
+                            <div style="font-weight:600;font-size:0.9rem;color:var(--text);">${escapeHtml(t.name)}</div>
+                            ${t.description ? `<div style="font-size:0.8rem;color:var(--text-muted);margin-top:2px;">${escapeHtml(t.description)}</div>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }).join('');
+
+        UI.showBottomSheet(`
+            <div class="bottom-sheet-header">
+                <h3>选择 Prompt 模板</h3>
+            </div>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">选择模板后将替换当前的自定义要求</p>
+            <div style="max-height:50vh;overflow-y:auto;">
+                ${items}
+            </div>
+        `);
+
+        requestAnimationFrame(() => {
+            document.querySelectorAll('.prompt-template-pick-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    const templateId = el.dataset.templateId;
+                    const template = store.getPromptTemplateById(templateId);
+                    if (!template) return;
+
+                    // 将模板 prompt 填入自定义要求
+                    const style = Storage.getStyle();
+                    style.customPrompt = template.prompt;
+                    // 存储选中的模板 ID，用于 AI 调用时传入
+                    this._selectedPromptTemplateId = templateId;
+
+                    // 如果模板有自定义 modules，使用模板的 modules
+                    if (template.modules && Array.isArray(template.modules)) {
+                        Storage.saveModules(template.modules);
+                    }
+
+                    Storage.saveStyle(style);
+                    UI.closeBottomSheet();
+                    UI.showToast(`已应用模板「${template.name}」`);
+                });
+                el.addEventListener('mouseenter', () => {
+                    el.style.background = 'var(--primary-soft)';
+                    el.style.borderColor = 'var(--primary-light)';
+                });
+                el.addEventListener('mouseleave', () => {
+                    el.style.background = '';
+                    el.style.borderColor = '';
+                });
+            });
+        });
+    }
+
     async generateFeedback() {
         // 防重复提交：检查是否正在生成
         const btn = document.getElementById('btn-generate');
@@ -720,7 +792,7 @@ class RecordPage {
                 }
 
                 UI.updateLoading('正在为 ' + studentNames.length + ' 位学生生成反馈...');
-                const feedbacks = await AiService.generateGroupFeedback(text, moduleNames, studentNames, subjectName, style, subject?.id);
+                const feedbacks = await AiService.generateGroupFeedback(text, moduleNames, studentNames, subjectName, style, subject?.id, this._selectedPromptTemplateId);
 
                 // 为每位学生保存到各自的历史记录
                 const MAX_STORED_TRANSCRIPT = 10000;
@@ -753,7 +825,7 @@ class RecordPage {
                 // ===== 单学生模式：原有逻辑 =====
                 let studentName = student ? student.name : '';
                 UI.updateLoading('正在生成反馈内容...');
-                const feedback = await AiService.generateFeedback(text, moduleNames, studentName, subjectName, style, subject?.id);
+                const feedback = await AiService.generateFeedback(text, moduleNames, studentName, subjectName, style, subject?.id, this._selectedPromptTemplateId);
 
                 if (student) {
                     const MAX_STORED_TRANSCRIPT = 10000;

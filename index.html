@@ -140,26 +140,26 @@
     </div>
 
     <!-- Scripts -->
-    <script src="js/db.js?v=1"></script>
-    <script src="js/storage.js?v=35"></script>
-    <script src="js/models.js?v=37"></script>
+    <script src="js/db.js?v=2"></script>
+    <script src="js/storage.js?v=36"></script>
+    <script src="js/models.js?v=38"></script>
     <script src="js/recorder.js?v=44"></script>
-    <script src="js/ai.js?v=36"></script>
+    <script src="js/ai.js?v=37"></script>
     <script src="js/ui.js?v=36"></script>
     <script src="js/components/bottomSheet.js?v=32"></script>
     <script src="js/pages/studentsPage.js?v=33"></script>
     <script src="js/pages/studentFormPage.js?v=33"></script>
     <script src="js/pages/subjectSelectPage.js?v=32"></script>
-    <script src="js/pages/recordPage.js?v=37"></script>
+    <script src="js/pages/recordPage.js?v=38"></script>
     <script src="js/pages/historyPage.js?v=36"></script>
-    <script src="js/pages/settingsPage.js?v=35"></script>
+    <script src="js/pages/settingsPage.js?v=36"></script>
     <!-- Transformers.js：本地AI语音识别（Whisper模型），按需加载 -->
     <script type="module">
         import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.1/dist/transformers.min.js')
             .then(m => { window.transformers = m; console.log('[Transformers.js] 加载成功'); })
             .catch(e => { console.warn('[Transformers.js] CDN加载失败，本地AI识别功能将不可用:', e); });
     </script>
-    <script src="js/app.js?v=37"></script>
+    <script src="js/app.js?v=38"></script>
     <script>
         // 注册 Service Worker 实现离线缓存
         if ('serviceWorker' in navigator) {

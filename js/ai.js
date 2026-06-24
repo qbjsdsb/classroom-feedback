@@ -29,7 +29,7 @@ class AI {
         }
     }
 
-    static async generateFeedback(transcript, modules, studentName, subjectName, style, subjectId) {
+    static async generateFeedback(transcript, modules, studentName, subjectName, style, subjectId, promptTemplateId) {
         const apiKey = Storage.getApiKey();
         if (!apiKey) {
             throw new Error('请先设置 API Key');
@@ -47,6 +47,20 @@ class AI {
             : '不要在反馈中提及"请家长协助"、"请家长监督"、"请家长提醒"等类似内容。';
         const customReq = style.customPrompt ? `\n\n## 用户自定义要求\n${style.customPrompt}` : '';
 
+        // 获取 Prompt 模板
+        let promptTemplateReq = '';
+        let effectiveModules = modules;
+        if (promptTemplateId) {
+            const template = store.getPromptTemplateById(promptTemplateId);
+            if (template && template.prompt) {
+                promptTemplateReq = `\n\n## Prompt 模板要求（${template.name}）\n${template.prompt}`;
+                // 如果模板有自定义 modules，使用模板的 modules
+                if (template.modules && Array.isArray(template.modules)) {
+                    effectiveModules = template.modules.filter(m => m.enabled).map(m => m.name);
+                }
+            }
+        }
+
         // 获取科目专属模板
         let subjectTemplateReq = '';
         if (subjectId) {
@@ -57,12 +71,12 @@ class AI {
         }
 
         // 按模块生成字数限制说明
-        const moduleLengthInstructions = modules.map(m => {
+        const moduleLengthInstructions = effectiveModules.map(m => {
             const len = Storage.getModuleLength(m, style);
             return `- ${m}：${len.min}到${len.max}字`;
         }).join('\n');
 
-        const moduleInstructions = modules.map(m => {
+        const moduleInstructions = effectiveModules.map(m => {
             const desc = this.getModuleDescription(m);
             return `- ${m}：${desc}`;
         }).join('\n');
@@ -115,6 +129,7 @@ ${processedTranscript}
 8. ${formatReq}
 9. ${this.getLengthGuidance(transcript)}
 ${subjectTemplateReq}
+${promptTemplateReq}
 ${customReq}
 
 ## 需要包含的模块
@@ -605,7 +620,7 @@ ${segment}
      * @param {string|null} subjectId - 科目ID
      * @returns {Promise<Array<{studentName: string, feedback: Array<{module: string, content: string}>}>>}
      */
-    static async generateGroupFeedback(transcript, modules, studentNames, subjectName, style, subjectId) {
+    static async generateGroupFeedback(transcript, modules, studentNames, subjectName, style, subjectId, promptTemplateId) {
         const apiKey = Storage.getApiKey();
         if (!apiKey) throw new Error('请先设置 API Key');
 
@@ -630,13 +645,27 @@ ${segment}
             }
         }
 
+        // 获取 Prompt 模板
+        let promptTemplateReq = '';
+        let effectiveModules = modules;
+        if (promptTemplateId) {
+            const template = store.getPromptTemplateById(promptTemplateId);
+            if (template && template.prompt) {
+                promptTemplateReq = `\n\n## Prompt 模板要求（${template.name}）\n${template.prompt}`;
+                // 如果模板有自定义 modules，使用模板的 modules
+                if (template.modules && Array.isArray(template.modules)) {
+                    effectiveModules = template.modules.filter(m => m.enabled).map(m => m.name);
+                }
+            }
+        }
+
         // 按模块生成字数限制说明
-        const moduleLengthInstructions = modules.map(m => {
+        const moduleLengthInstructions = effectiveModules.map(m => {
             const len = Storage.getModuleLength(m, style);
             return `- ${m}：${len.min}到${len.max}字`;
         }).join('\n');
 
-        const moduleInstructions = modules.map(m => {
+        const moduleInstructions = effectiveModules.map(m => {
             const desc = this.getModuleDescription(m);
             return `- ${m}：${desc}`;
         }).join('\n');
@@ -699,6 +728,7 @@ ${processedTranscript}
 8. ${formatReq}
 9. 请为每位学生**分别**生成独立的课堂反馈
 ${subjectTemplateReq}
+${promptTemplateReq}
 ${customReq}
 
 ## 需要包含的模块

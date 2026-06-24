@@ -2,7 +2,7 @@
 
 class DB {
     static DB_NAME = 'classroom-feedback';
-    static DB_VERSION = 1;
+    static DB_VERSION = 2;
     static _db = null;
 
     // 需要迁移到 IndexedDB 的简单 key-value 键名
@@ -64,7 +64,8 @@ class DB {
                     { name: 'feedback', keyPath: 'studentId' },
                     { name: 'templates', keyPath: 'studentId' },
                     { name: 'subjectTemplates', keyPath: 'subjectId' },
-                    { name: 'quickReplies', keyPath: 'id' }
+                    { name: 'quickReplies', keyPath: 'id' },
+                    { name: 'promptTemplates', keyPath: 'id' }
                 ];
                 for (const { name, keyPath } of stores) {
                     if (!db.objectStoreNames.contains(name)) {

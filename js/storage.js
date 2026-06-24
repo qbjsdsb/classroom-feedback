@@ -229,11 +229,12 @@ class Storage {
             store._templatesCache = {};
             store._subjectTemplatesCache = {};
             store._quickRepliesCache = null;
+            store._promptTemplatesCache = [];
         }
 
         // 清空所有 IndexedDB stores
         const storeNames = ['keyvalue', 'students', 'subjects', 'studentSubjects',
-            'feedback', 'templates', 'subjectTemplates', 'quickReplies'];
+            'feedback', 'templates', 'subjectTemplates', 'quickReplies', 'promptTemplates'];
         for (const name of storeNames) {
             DB.clearStore(name).catch(e => console.warn(`[Storage] 清空 ${name} 失败:`, e));
         }

@@ -21,6 +21,7 @@ class DataStore {
         this._templatesCache = {};
         this._subjectTemplatesCache = {};
         this._quickRepliesCache = null;
+        this._promptTemplatesCache = [];
         // 不再在构造函数中调用 _init()，改为异步 init()
     }
 
@@ -66,6 +67,9 @@ class DataStore {
             // 加载快捷回复
             const qrRecord = await DB.getRecord('quickReplies', 'main');
             this._quickRepliesCache = qrRecord ? qrRecord.replies : null;
+
+            // 加载 Prompt 模板
+            this._promptTemplatesCache = await DB.getAll('promptTemplates');
         } catch (e) {
             console.warn('[DataStore] 从 IndexedDB 加载数据失败，尝试 localStorage 降级:', e);
             this._loadFallbackFromLocalStorage();
@@ -73,6 +77,9 @@ class DataStore {
 
         // 迁移：补充缺失的默认科目
         this._migrateDefaultSubjects();
+
+        // 初始化默认 Prompt 模板
+        this.initDefaultPromptTemplates();
     }
 
     /**
@@ -96,6 +103,7 @@ class DataStore {
         this._templatesCache = {};
         this._subjectTemplatesCache = {};
         this._quickRepliesCache = null;
+        this._promptTemplatesCache = [];
     }
 
     // === 学生 CRUD ===
@@ -492,6 +500,155 @@ class DataStore {
         replies.push(reply);
         this.saveQuickReplies(replies);
         return true;
+    }
+
+    // === Prompt 模板库 ===
+
+    _savePromptTemplates() {
+        DB.putRecords('promptTemplates', this._promptTemplatesCache).catch(e =>
+            console.warn('[DataStore] 保存 Prompt 模板失败:', e)
+        );
+    }
+
+    getPromptTemplates() {
+        return [...this._promptTemplatesCache].sort((a, b) => {
+            // 先按分类排序，再按名称排序
+            if (a.category !== b.category) return a.category.localeCompare(b.category, 'zh-CN');
+            return a.name.localeCompare(b.name, 'zh-CN');
+        });
+    }
+
+    getPromptTemplateById(id) {
+        return this._promptTemplatesCache.find(t => t.id === id);
+    }
+
+    addPromptTemplate(template) {
+        const now = new Date().toISOString();
+        const newTemplate = {
+            id: `pt_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+            name: template.name.trim(),
+            description: (template.description || '').trim(),
+            category: template.category || '反馈风格',
+            prompt: template.prompt.trim(),
+            modules: template.modules || null,
+            isDefault: false,
+            createdAt: now,
+            updatedAt: now
+        };
+        this._promptTemplatesCache.push(newTemplate);
+        this._savePromptTemplates();
+        return newTemplate;
+    }
+
+    updatePromptTemplate(id, updates) {
+        const idx = this._promptTemplatesCache.findIndex(t => t.id === id);
+        if (idx === -1) return null;
+        this._promptTemplatesCache[idx] = {
+            ...this._promptTemplatesCache[idx],
+            ...updates,
+            updatedAt: new Date().toISOString()
+        };
+        this._savePromptTemplates();
+        return this._promptTemplatesCache[idx];
+    }
+
+    deletePromptTemplate(id) {
+        const idx = this._promptTemplatesCache.findIndex(t => t.id === id);
+        if (idx === -1) return false;
+        // 预置模板不可删除
+        if (this._promptTemplatesCache[idx].isDefault) return false;
+        this._promptTemplatesCache.splice(idx, 1);
+        this._savePromptTemplates();
+        return true;
+    }
+
+    getDefaultPromptTemplates() {
+        return [
+            {
+                id: 'pt_default_praise',
+                name: '表扬鼓励型',
+                description: '侧重表扬和鼓励，适合表现好的学生',
+                category: '反馈风格',
+                prompt: '请侧重表扬和鼓励学生的优点，用温暖积极的语气，多肯定学生的进步和努力，让反馈充满正能量。对于不足之处，用建设性的方式委婉提出。',
+                modules: null,
+                isDefault: true,
+                createdAt: '2026-06-24T00:00:00.000Z',
+                updatedAt: '2026-06-24T00:00:00.000Z'
+            },
+            {
+                id: 'pt_default_problem',
+                name: '问题导向型',
+                description: '侧重发现和解决问题，适合需要改进的学生',
+                category: '反馈风格',
+                prompt: '请侧重发现学生存在的问题并提出具体的改进建议，用客观中肯的语气，明确指出薄弱环节，给出可操作的改进方案和学习建议。',
+                modules: null,
+                isDefault: true,
+                createdAt: '2026-06-24T00:00:00.000Z',
+                updatedAt: '2026-06-24T00:00:00.000Z'
+            },
+            {
+                id: 'pt_default_parent',
+                name: '家长沟通型',
+                description: '正式语气，适合与家长沟通',
+                category: '家长沟通',
+                prompt: '请使用正式、专业的语气撰写反馈，适合发给家长阅读。措辞严谨规范，既体现教师专业素养，又让家长清晰了解学生情况。避免过于口语化的表达。',
+                modules: null,
+                isDefault: true,
+                createdAt: '2026-06-24T00:00:00.000Z',
+                updatedAt: '2026-06-24T00:00:00.000Z'
+            },
+            {
+                id: 'pt_default_concise',
+                name: '简洁精炼型',
+                description: '简洁明了，直击要点',
+                category: '反馈风格',
+                prompt: '请用简洁精炼的语言撰写反馈，直击要点，避免冗长和重复。每个模块控制在最短字数范围内，用最少的文字传达最关键的信息。',
+                modules: null,
+                isDefault: true,
+                createdAt: '2026-06-24T00:00:00.000Z',
+                updatedAt: '2026-06-24T00:00:00.000Z'
+            },
+            {
+                id: 'pt_default_math',
+                name: '数学学科',
+                description: '数学专属反馈，侧重解题思路和计算准确性',
+                category: '学科特色',
+                prompt: '请侧重数学学科特点，重点关注：解题思路是否清晰、计算过程是否准确、公式运用是否正确、逻辑推理是否严密。鼓励学生多角度思考问题，培养数学思维。',
+                modules: null,
+                isDefault: true,
+                createdAt: '2026-06-24T00:00:00.000Z',
+                updatedAt: '2026-06-24T00:00:00.000Z'
+            },
+            {
+                id: 'pt_default_english',
+                name: '英语学科',
+                description: '英语专属反馈，侧重语言技能和表达能力',
+                category: '学科特色',
+                prompt: '请侧重英语学科特点，重点关注：词汇掌握情况、语法运用是否正确、听说读写各项技能表现、语言表达能力。鼓励学生多开口练习，注重语感培养。',
+                modules: null,
+                isDefault: true,
+                createdAt: '2026-06-24T00:00:00.000Z',
+                updatedAt: '2026-06-24T00:00:00.000Z'
+            }
+        ];
+    }
+
+    initDefaultPromptTemplates() {
+        // 如果没有任何模板，添加默认模板
+        if (this._promptTemplatesCache.length === 0) {
+            const defaults = this.getDefaultPromptTemplates();
+            this._promptTemplatesCache = [...defaults];
+            this._savePromptTemplates();
+        } else {
+            // 补充缺失的默认模板（新增默认模板时自动添加）
+            const defaults = this.getDefaultPromptTemplates();
+            for (const def of defaults) {
+                if (!this._promptTemplatesCache.some(t => t.id === def.id)) {
+                    this._promptTemplatesCache.push({ ...def });
+                }
+            }
+            this._savePromptTemplates();
+        }
     }
 }
 
