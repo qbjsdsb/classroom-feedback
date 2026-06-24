@@ -10,7 +10,7 @@ class SettingsPage {
         const apiKey = Storage.getApiKey();
         const style = Storage.getStyle();
         const speechConfig = Storage.getSpeechConfig();
-        
+
         this.container.innerHTML = `
             <header>
                 <button class="back-btn" onclick="app.navigate('students')">←</button>
@@ -23,7 +23,7 @@ class SettingsPage {
 
                 <!-- API Key 设置 -->
                 <section class="settings-group">
-                    <h3>🔑 API Key</h3>
+                    <h3 style="font-size:1.05rem;font-weight:700;">🔑 API Key</h3>
                     <div class="form-group">
                         <input type="password" id="api-key" placeholder="请输入您的 DeepSeek API Key"
                                value="${escapeHtml(apiKey) || ''}">
@@ -42,7 +42,7 @@ class SettingsPage {
                                 <label style="font-size:0.85rem;">API 基础地址（可选）</label>
                                 <input type="text" id="api-base-url" placeholder="https://api.deepseek.com"
                                        value="${escapeHtml(Storage.getApiBaseUrl()) || ''}" style="font-size:0.9rem;padding:8px;">
-                                <p class="hint-text" style="font-size:0.75rem;">使用 DeepSeek 可留空；使用兼容接口请填写完整地址</p>
+                                <p class="hint-text" style="font-size:0.75rem;margin-top:4px;">使用 DeepSeek 可留空；使用兼容接口请填写完整地址</p>
                             </div>
                         </details>
                     </div>
@@ -50,7 +50,7 @@ class SettingsPage {
 
                 <!-- 语音识别设置 -->
                 <section class="settings-group">
-                    <h3>🎤 语音识别</h3>
+                    <h3 style="font-size:1.05rem;font-weight:700;">🎤 语音识别</h3>
                     <div class="form-group">
                         <div class="speech-provider-list">
                             <label class="style-option ${speechConfig.provider === 'browser' ? 'active' : ''}">
@@ -74,7 +74,7 @@ class SettingsPage {
 
                 <!-- 反馈风格设置 -->
                 <section class="settings-group">
-                    <h3>🎨 反馈风格</h3>
+                    <h3 style="font-size:1.05rem;font-weight:700;">🎨 反馈风格</h3>
                     <div class="form-group">
                         <label style="font-size:0.85rem;color:var(--text-muted);margin-bottom:8px;">语气风格</label>
                         <div class="style-options">
@@ -110,142 +110,125 @@ class SettingsPage {
                             </label>
                         </div>
                     </div>
-                </section>
 
-                <!-- 更多设置（折叠面板） -->
-                <details class="settings-group settings-collapsible" open>
-                    <summary><h3>⚙️ 更多设置</h3></summary>
-                    <div class="collapsible-content">
-                        <!-- 输出格式 -->
-                        <div class="form-group compact">
-                            <label class="toggle-label">
-                                <input type="checkbox" id="use-bullet-points" ${style.useBulletPoints ? 'checked' : ''}>
-                                <span class="toggle-switch"></span>
-                                <span>允许分点输出</span>
+                    <!-- 从原"更多设置"移出的开关 -->
+                    <div class="form-group compact" style="margin-top:12px;">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="use-bullet-points" ${style.useBulletPoints ? 'checked' : ''}>
+                            <span class="toggle-switch"></span>
+                            <span>允许分点输出</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group compact" style="margin-top:8px;">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="use-emoji" ${style.useEmoji ? 'checked' : ''}>
+                            <span class="toggle-switch"></span>
+                            <span>使用 Emoji 表情</span>
+                        </label>
+                    </div>
+                    <div class="form-group emoji-position-group compact" style="margin-left:32px;${style.useEmoji ? '' : 'display:none;'}">
+                        <label style="font-size:0.8rem;color:var(--text-muted);">Emoji 位置</label>
+                        <div class="style-options" style="margin-top:6px;">
+                            <label class="style-option ${style.emojiPosition === 'content' ? 'active' : ''}" style="padding:6px 10px;">
+                                <input type="radio" name="emoji-position" value="content" ${style.emojiPosition === 'content' ? 'checked' : ''}>
+                                <span class="style-name" style="font-size:0.8rem;">融入内容</span>
                             </label>
-                        </div>
-
-                        <!-- Emoji 设置 -->
-                        <div class="form-group compact">
-                            <label class="toggle-label">
-                                <input type="checkbox" id="use-emoji" ${style.useEmoji ? 'checked' : ''}>
-                                <span class="toggle-switch"></span>
-                                <span>使用 Emoji 表情</span>
+                            <label class="style-option ${style.emojiPosition === 'title' ? 'active' : ''}" style="padding:6px 10px;">
+                                <input type="radio" name="emoji-position" value="title" ${style.emojiPosition === 'title' ? 'checked' : ''}>
+                                <span class="style-name" style="font-size:0.8rem;">标题后</span>
                             </label>
-                        </div>
-                        <div class="form-group emoji-position-group compact" style="margin-left:32px;${style.useEmoji ? '' : 'display:none;'}">
-                            <label style="font-size:0.8rem;color:var(--text-muted);">Emoji 位置</label>
-                            <div class="style-options" style="margin-top:6px;">
-                                <label class="style-option ${style.emojiPosition === 'content' ? 'active' : ''}" style="padding:6px 10px;">
-                                    <input type="radio" name="emoji-position" value="content" ${style.emojiPosition === 'content' ? 'checked' : ''}>
-                                    <span class="style-name" style="font-size:0.8rem;">融入内容</span>
-                                </label>
-                                <label class="style-option ${style.emojiPosition === 'title' ? 'active' : ''}" style="padding:6px 10px;">
-                                    <input type="radio" name="emoji-position" value="title" ${style.emojiPosition === 'title' ? 'checked' : ''}>
-                                    <span class="style-name" style="font-size:0.8rem;">标题后</span>
-                                </label>
-                                <label class="style-option ${style.emojiPosition === 'end' ? 'active' : ''}" style="padding:6px 10px;">
-                                    <input type="radio" name="emoji-position" value="end" ${style.emojiPosition === 'end' ? 'checked' : ''}>
-                                    <span class="style-name" style="font-size:0.8rem;">模块末尾</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- 日期设置 -->
-                        <div class="form-group compact">
-                            <label class="toggle-label">
-                                <input type="checkbox" id="use-custom-date" ${style.useCustomDate ? 'checked' : ''}>
-                                <span class="toggle-switch"></span>
-                                <span>使用自定义日期</span>
+                            <label class="style-option ${style.emojiPosition === 'end' ? 'active' : ''}" style="padding:6px 10px;">
+                                <input type="radio" name="emoji-position" value="end" ${style.emojiPosition === 'end' ? 'checked' : ''}>
+                                <span class="style-name" style="font-size:0.8rem;">模块末尾</span>
                             </label>
-                            <div class="custom-date-input" style="margin-top:6px;${style.useCustomDate ? '' : 'display:none;'}">
-                                <input type="date" id="custom-date" value="${style.customDate || ''}">
-                            </div>
-                        </div>
-
-                        <!-- 字数限制 -->
-                        <div class="form-group compact">
-                            <label style="font-size:0.85rem;">字数限制</label>
-                            <div style="display:flex;gap:10px;align-items:center;margin-top:6px;">
-                                <input type="number" id="min-length" value="${style.minLength || 50}" min="10" max="1000" style="flex:1;padding:8px;font-size:0.9rem;">
-                                <span style="color:var(--text-muted);font-size:0.85rem;">-</span>
-                                <input type="number" id="max-length" value="${style.maxLength || 150}" min="50" max="5000" style="flex:1;padding:8px;font-size:0.9rem;">
-                            </div>
-                            <p class="hint-text" style="font-size:0.75rem;margin-top:4px;">全局后备值，超长课程建议调至1000-2000字</p>
-                        </div>
-
-                        <!-- 按模块字数 -->
-                        <div class="form-group compact">
-                            <label style="font-size:0.85rem;">按模块字数</label>
-                            <div id="module-lengths-list" class="module-lengths-list" style="margin-top:6px;">
-                                ${this.renderModuleLengthsList(style)}
-                            </div>
-                        </div>
-
-                        <!-- 其他开关 -->
-                        <div class="form-group compact">
-                            <label class="toggle-label">
-                                <input type="checkbox" id="name-shorten" ${style.nameShorten !== false ? 'checked' : ''}>
-                                <span class="toggle-switch"></span>
-                                <span>姓名截取（三字名取后两字）</span>
-                            </label>
-                        </div>
-                        <div class="form-group compact">
-                            <label class="toggle-label">
-                                <input type="checkbox" id="include-parent-help" ${style.includeParentHelp ? 'checked' : ''}>
-                                <span class="toggle-switch"></span>
-                                <span>包含"请家长协助"内容</span>
-                            </label>
-                        </div>
-                        <div class="form-group compact">
-                            <label class="toggle-label">
-                                <input type="checkbox" id="strict-input" ${style.strictInput !== false ? 'checked' : ''}>
-                                <span class="toggle-switch"></span>
-                                <span>严格遵循输入内容（不编造）</span>
-                            </label>
-                        </div>
-
-                        <!-- 自定义要求 -->
-                        <div class="form-group compact">
-                            <label style="font-size:0.85rem;">自定义要求（可选）</label>
-                            <textarea id="custom-prompt" placeholder="例如：多使用鼓励性语言；每段不要太长..."
-                                style="width:100%;min-height:60px;padding:10px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;font-family:inherit;resize:vertical;margin-top:6px;">${style.customPrompt || ''}</textarea>
                         </div>
                     </div>
-                </details>
+
+                    <div class="form-group compact" style="margin-top:8px;">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="name-shorten" ${style.nameShorten !== false ? 'checked' : ''}>
+                            <span class="toggle-switch"></span>
+                            <span>姓名截取（三字名取后两字）</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group compact" style="margin-top:8px;">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="strict-input" ${style.strictInput !== false ? 'checked' : ''}>
+                            <span class="toggle-switch"></span>
+                            <span>严格遵循输入内容（不编造）</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group compact" style="margin-top:8px;">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="include-parent-help" ${style.includeParentHelp ? 'checked' : ''}>
+                            <span class="toggle-switch"></span>
+                            <span>包含"请家长协助"内容</span>
+                        </label>
+                    </div>
+
+                    <div class="form-group compact" style="margin-top:8px;">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="use-custom-date" ${style.useCustomDate ? 'checked' : ''}>
+                            <span class="toggle-switch"></span>
+                            <span>使用自定义日期</span>
+                        </label>
+                        <div class="custom-date-input" style="margin-top:6px;${style.useCustomDate ? '' : 'display:none;'}">
+                            <input type="date" id="custom-date" value="${style.customDate || ''}">
+                        </div>
+                    </div>
+
+                    <!-- 按模块字数 -->
+                    <div class="form-group compact" style="margin-top:12px;">
+                        <label style="font-size:0.85rem;">按模块字数</label>
+                        <div id="module-lengths-list" class="module-lengths-list" style="margin-top:6px;">
+                            ${this.renderModuleLengthsList(style)}
+                        </div>
+                    </div>
+                </section>
 
                 <!-- 科目管理 -->
                 <section class="settings-group">
-                    <h3>📚 科目管理</h3>
+                    <h3 style="font-size:1.05rem;font-weight:700;">📚 科目管理</h3>
                     <div id="subjects-list" class="subjects-manage-list">
                         ${this.renderSubjectsList()}
                     </div>
                     <button id="btn-add-subject" class="secondary-btn" style="margin-top:10px;">+ 添加科目</button>
                 </section>
 
-                <!-- 科目专属模板 -->
-                <section class="settings-group">
-                    <h3>📖 科目专属模板</h3>
-                    <div id="subject-templates-list">
-                        ${this.renderSubjectTemplatesList()}
-                    </div>
-                </section>
-
                 <!-- Prompt 模板库 -->
                 <section class="settings-group">
-                    <h3>📋 Prompt 模板库</h3>
-                    <p class="hint-text" style="margin-bottom:10px;">保存和管理可复用的 Prompt 模板，在生成反馈时快速应用</p>
+                    <h3 style="font-size:1.05rem;font-weight:700;">📋 Prompt 模板库</h3>
+                    <p class="hint-text" style="margin-top:4px;margin-bottom:6px;">保存和管理可复用的 Prompt 模板，在生成反馈时快速应用</p>
+                    <p class="hint-text" style="margin-top:4px;margin-bottom:10px;">提示：可在录音页面通过「选择模板」快速应用模板，或使用下方「临时备注」添加一次性要求</p>
                     <div style="display:flex;gap:8px;margin-bottom:12px;">
                         <button id="btn-add-prompt-template" class="secondary-btn" style="flex:1;">+ 新建模板</button>
                     </div>
                     <div id="prompt-templates-list">
                         ${this.renderPromptTemplatesList()}
                     </div>
+
+                    <!-- 临时备注 -->
+                    <div class="form-group" style="margin-top:16px;">
+                        <label style="font-size:0.85rem;">临时备注（每次生成反馈时追加）</label>
+                        <textarea id="custom-prompt" placeholder="例如：本次课特别强调计算准确性..."
+                            style="width:100%;min-height:60px;padding:10px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;font-family:inherit;resize:vertical;margin-top:4px;">${style.customPrompt || ''}</textarea>
+                    </div>
+
+                    <!-- 科目专属设置 -->
+                    <div style="margin-top:16px;">
+                        <label style="font-size:0.9rem;font-weight:600;">科目专属设置</label>
+                        <div id="subject-templates-list" style="margin-top:8px;">
+                            ${this.renderSubjectSettingsList()}
+                        </div>
+                    </div>
                 </section>
 
                 <!-- 反馈模块设置 -->
                 <section class="settings-group">
-                    <h3>📋 反馈模块</h3>
+                    <h3 style="font-size:1.05rem;font-weight:700;">📋 反馈模块</h3>
                     <div id="modules-list" class="modules-manage-list">
                         ${this.renderModulesList()}
                     </div>
@@ -254,7 +237,7 @@ class SettingsPage {
 
                 <!-- 主题设置 -->
                 <section class="settings-group">
-                    <h3>🎨 界面主题</h3>
+                    <h3 style="font-size:1.05rem;font-weight:700;">🎨 界面主题</h3>
                     <div class="theme-selector" id="theme-selector">
                         <button class="theme-option ${Storage.getTheme() === 'default' ? 'active' : ''}" data-theme="default">
                             <span class="theme-dot" style="background: linear-gradient(135deg, #6366F1, #8B5CF6);"></span>
@@ -277,8 +260,8 @@ class SettingsPage {
 
                 <!-- 录音日志 -->
                 <section class="settings-group">
-                    <h3>📋 录音日志</h3>
-                    <p class="hint-text" style="margin-bottom:10px;">查看录音过程中的运行日志，便于排查问题</p>
+                    <h3 style="font-size:1.05rem;font-weight:700;">📋 录音日志</h3>
+                    <p class="hint-text" style="margin-top:4px;margin-bottom:10px;">查看录音过程中的运行日志，便于排查问题</p>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <button id="btn-view-logs" class="secondary-btn" style="flex:1;min-width:120px;">🔍 查看日志</button>
                         <button id="btn-export-logs" class="secondary-btn" style="flex:1;min-width:120px;">📤 导出日志</button>
@@ -288,7 +271,7 @@ class SettingsPage {
 
                 <!-- 数据管理 -->
                 <section class="settings-group">
-                    <h3>💾 数据管理</h3>
+                    <h3 style="font-size:1.05rem;font-weight:700;">💾 数据管理</h3>
                     ${this._renderBackupStatus()}
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <button id="btn-export" class="secondary-btn" style="flex:1;min-width:120px;">📤 导出</button>
@@ -299,7 +282,7 @@ class SettingsPage {
                 </section>
 
                 <p class="hint-text" style="text-align:center;margin-top:8px;font-size:0.75rem;">
-                    课堂反馈助手 v1.7 · 纯前端应用，数据保存在本地
+                    课堂反馈助手 v1.9 · 纯前端应用，数据保存在本地
                 </p>
             </div>
         `;
@@ -311,7 +294,7 @@ class SettingsPage {
     renderModuleLengthsList(style) {
         const modules = Storage.getModules();
         const lengths = style.moduleLengths || {};
-        
+
         return modules.map((m, i) => {
             const len = lengths[m.name] || { min: 50, max: 150 };
             return `
@@ -370,7 +353,7 @@ class SettingsPage {
                     <span class="manage-item-name">${escapeHtml(s.name)}</span>
                 </div>
                 <div class="manage-item-actions">
-                    <input type="color" class="color-picker" value="${escapeHtml(s.color)}" 
+                    <input type="color" class="color-picker" value="${escapeHtml(s.color)}"
                            onchange="settingsPage.updateSubjectColor('${s.id}', this.value)">
                     <button class="delete-btn" onclick="settingsPage.deleteSubject('${s.id}')">🗑️</button>
                 </div>
@@ -402,36 +385,141 @@ class SettingsPage {
         `).join('');
     }
 
-    renderSubjectTemplatesList() {
+    /** 科目专属设置列表（替代原 renderSubjectTemplatesList） */
+    renderSubjectSettingsList() {
         const subjects = store.getSubjects();
         if (subjects.length === 0) {
-            return '<p class="hint-text">暂无科目，请先添加科目</p>';
+            return '<p class="hint-text" style="margin-top:4px;">暂无科目，请先添加科目</p>';
         }
         return subjects.map(s => {
             const template = store.getSubjectTemplate(s.id);
             const hasTemplate = template && template.prompt;
             return `
-                <div class="manage-item" style="flex-direction:column;align-items:flex-start;gap:8px;padding:16px 0;">
-                    <div style="display:flex;align-items:center;gap:8px;width:100%;">
-                        <span class="color-dot" style="background:${escapeHtml(s.color)};width:12px;height:12px;"></span>
-                        <span class="manage-item-name">${escapeHtml(s.name)}</span>
-                        ${hasTemplate ? '<span style="font-size:0.75rem;color:var(--success);background:rgba(16,185,129,0.1);padding:2px 8px;border-radius:10px;">已配置</span>' : ''}
-                    </div>
-                    <textarea
-                        class="subject-template-input"
-                        data-subject-id="${s.id}"
-                        placeholder="例如：数学科目需要强调解题思路、公式推导过程、计算准确性等..."
-                        style="width:100%;min-height:60px;padding:10px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;font-family:inherit;resize:vertical;margin-top:4px;"
-                    >${hasTemplate ? escapeHtml(template.prompt) : ''}</textarea>
+                <div class="manage-item" style="display:flex;align-items:center;gap:10px;padding:10px 0;">
+                    <span class="color-dot" style="background:${escapeHtml(s.color)};width:12px;height:12px;"></span>
+                    <span class="manage-item-name" style="flex:1;">${escapeHtml(s.name)}</span>
+                    ${hasTemplate
+                        ? '<span style="font-size:0.75rem;color:var(--success);background:rgba(16,185,129,0.1);padding:2px 8px;border-radius:10px;">已配置</span>'
+                        : '<span style="font-size:0.75rem;color:var(--text-muted);background:var(--bg);padding:2px 8px;border-radius:10px;">未配置</span>'}
+                    <button class="text-btn subject-edit-btn" data-subject-id="${s.id}" style="font-size:0.8rem;">编辑</button>
+                    <button class="text-btn subject-apply-template-btn" data-subject-id="${s.id}" style="font-size:0.8rem;color:var(--primary);">从模板应用</button>
                 </div>
             `;
         }).join('');
     }
 
+    /** 编辑科目专属模板（底部弹窗） */
+    showSubjectTemplateEditor(subjectId) {
+        const subject = store.getSubjectById(subjectId);
+        if (!subject) return;
+        const existing = store.getSubjectTemplate(subjectId);
+        const currentPrompt = existing && existing.prompt ? existing.prompt : '';
+
+        UI.showBottomSheet(`
+            <div class="bottom-sheet-header">
+                <h3>编辑科目模板 - ${escapeHtml(subject.name)}</h3>
+            </div>
+            <div class="form-section">
+                <div class="form-group">
+                    <label>科目专属 Prompt</label>
+                    <textarea id="subject-template-editor" placeholder="例如：数学科目需要强调解题思路、公式推导过程、计算准确性等..."
+                        style="width:100%;min-height:120px;padding:10px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;font-family:inherit;resize:vertical;margin-top:4px;">${escapeHtml(currentPrompt)}</textarea>
+                </div>
+                <div style="display:flex;gap:10px;">
+                    <button id="btn-st-cancel" class="secondary-btn" style="flex:1;">取消</button>
+                    <button id="btn-st-save" class="primary-btn" style="flex:1;">保存</button>
+                    ${currentPrompt ? '<button id="btn-st-clear" class="danger-btn" style="flex:1;">清空模板</button>' : ''}
+                </div>
+            </div>
+        `);
+
+        requestAnimationFrame(() => {
+            document.getElementById('btn-st-cancel')?.addEventListener('click', () => {
+                UI.closeBottomSheet();
+            });
+
+            document.getElementById('btn-st-save')?.addEventListener('click', () => {
+                const prompt = document.getElementById('subject-template-editor')?.value.trim();
+                if (prompt) {
+                    store.setSubjectTemplate(subjectId, { prompt, updatedAt: new Date().toISOString() });
+                    UI.showToast('科目模板已保存');
+                } else {
+                    store.deleteSubjectTemplate(subjectId);
+                    UI.showToast('科目模板已清空');
+                }
+                UI.closeBottomSheet();
+                this.render();
+            });
+
+            document.getElementById('btn-st-clear')?.addEventListener('click', () => {
+                store.deleteSubjectTemplate(subjectId);
+                UI.showToast('科目模板已清空');
+                UI.closeBottomSheet();
+                this.render();
+            });
+        });
+    }
+
+    /** 从模板库选择模板应用到指定科目 */
+    showApplyTemplateToSubjectPicker(subjectId) {
+        const subject = store.getSubjectById(subjectId);
+        if (!subject) return;
+        const templates = store.getPromptTemplates();
+
+        if (templates.length === 0) {
+            UI.showToast('暂无模板，请先创建模板');
+            return;
+        }
+
+        UI.showBottomSheet(`
+            <div class="bottom-sheet-header">
+                <h3>选择模板应用到 ${escapeHtml(subject.name)}</h3>
+            </div>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">选择一个模板，其 Prompt 将追加到该科目的专属模板中</p>
+            <div class="template-apply-list">
+                ${templates.map(t => `
+                    <div class="template-apply-item" data-template-id="${escapeHtml(t.id)}" style="display:flex;align-items:center;gap:10px;padding:12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;cursor:pointer;transition:background 0.15s;">
+                        <span style="flex:1;">
+                            <span style="font-weight:500;">${escapeHtml(t.name)}</span>
+                            <span style="font-size:0.75rem;color:var(--text-muted);margin-left:6px;">${escapeHtml(t.category)}</span>
+                        </span>
+                    </div>
+                `).join('')}
+            </div>
+        `);
+
+        requestAnimationFrame(() => {
+            document.querySelectorAll('.template-apply-item').forEach(el => {
+                el.addEventListener('click', () => {
+                    const templateId = el.dataset.templateId;
+                    const template = store.getPromptTemplateById(templateId);
+                    if (!template) return;
+
+                    const existing = store.getSubjectTemplate(subjectId);
+                    const existingPrompt = existing && existing.prompt ? existing.prompt : '';
+                    const newPrompt = existingPrompt
+                        ? existingPrompt + '\n\n' + template.prompt
+                        : template.prompt;
+
+                    store.setSubjectTemplate(subjectId, { prompt: newPrompt, updatedAt: new Date().toISOString() });
+                    UI.closeBottomSheet();
+                    UI.showToast(`已将「${template.name}」应用到 ${subject.name}`);
+                    this.render();
+                });
+                el.addEventListener('mouseenter', () => {
+                    el.style.background = 'var(--primary-soft)';
+                });
+                el.addEventListener('mouseleave', () => {
+                    el.style.background = '';
+                });
+            });
+        });
+    }
+
     renderPromptTemplatesList() {
         const templates = store.getPromptTemplates();
         if (templates.length === 0) {
-            return '<p class="hint-text">暂无模板，点击上方新建</p>';
+            return '<p class="hint-text" style="margin-top:4px;">暂无模板，点击上方新建</p>';
         }
         // 按分类分组
         const categories = [...new Set(templates.map(t => t.category))];
@@ -598,21 +686,21 @@ class SettingsPage {
         const apiKey = Storage.getApiKey();
         const statusEl = document.getElementById('api-key-status');
         if (!statusEl) return;
-        
+
         if (!apiKey) {
             statusEl.innerHTML = '';
             return;
         }
 
         statusEl.innerHTML = '<span class="api-key-status" style="color:var(--text-muted);">⏳ 验证中...</span>';
-        
+
         const baseUrl = Storage.getApiBaseUrl() || 'https://api.deepseek.com';
         try {
             const response = await fetch(`${baseUrl}/models`, {
                 method: 'GET',
                 headers: { 'Authorization': `Bearer ${apiKey}` }
             });
-            
+
             if (response.ok) {
                 statusEl.innerHTML = '<span class="api-key-status valid">✅ API Key 有效</span>';
                 this.apiKeyValid = true;
@@ -784,6 +872,22 @@ class SettingsPage {
             });
         });
 
+        // 科目专属设置 - 编辑按钮
+        this.container.querySelectorAll('.subject-edit-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const subjectId = btn.dataset.subjectId;
+                this.showSubjectTemplateEditor(subjectId);
+            });
+        });
+
+        // 科目专属设置 - 从模板应用按钮
+        this.container.querySelectorAll('.subject-apply-template-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const subjectId = btn.dataset.subjectId;
+                this.showApplyTemplateToSubjectPicker(subjectId);
+            });
+        });
+
         document.getElementById('btn-save-settings')?.addEventListener('click', async () => {
             const apiKey = document.getElementById('api-key').value.trim();
             const apiBaseUrl = document.getElementById('api-base-url').value.trim();
@@ -794,8 +898,10 @@ class SettingsPage {
 
             // 保存风格设置（包含所有新配置）
             const toneEl = document.querySelector('input[name="tone"]:checked');
-            const minLength = parseInt(document.getElementById('min-length')?.value) || 50;
-            const maxLength = parseInt(document.getElementById('max-length')?.value) || 150;
+            // 从当前已保存的 style 中读取 minLength/maxLength 作为后备值（全局字数输入已移除）
+            const currentStyle = Storage.getStyle();
+            const minLength = currentStyle.minLength || 50;
+            const maxLength = currentStyle.maxLength || 150;
             const nameShorten = document.getElementById('name-shorten')?.checked ?? true;
             const useEmoji = document.getElementById('use-emoji')?.checked ?? false;
             const emojiPosition = document.querySelector('input[name="emoji-position"]:checked')?.value || 'content';
@@ -805,7 +911,7 @@ class SettingsPage {
             const customPrompt = document.getElementById('custom-prompt')?.value.trim() || '';
             const useCustomDate = document.getElementById('use-custom-date')?.checked ?? false;
             const customDate = document.getElementById('custom-date')?.value || '';
-            
+
             // 收集按模块字数限制
             const moduleLengths = {};
             document.querySelectorAll('.module-length-item').forEach(item => {
@@ -816,7 +922,7 @@ class SettingsPage {
                     moduleLengths[moduleName] = { min, max };
                 }
             });
-            
+
             Storage.saveStyle({
                 tone: toneEl ? toneEl.value : 'formal',
                 minLength,
@@ -857,21 +963,10 @@ class SettingsPage {
                 provider: speechProvider ? speechProvider.value : 'browser'
             });
 
-            // 保存科目专属模板
-            document.querySelectorAll('.subject-template-input').forEach(textarea => {
-                const subjectId = textarea.dataset.subjectId;
-                const prompt = textarea.value.trim();
-                if (subjectId) {
-                    if (prompt) {
-                        store.setSubjectTemplate(subjectId, { prompt, updatedAt: new Date().toISOString() });
-                    } else {
-                        store.deleteSubjectTemplate(subjectId);
-                    }
-                }
-            });
+            // 科目专属模板已通过底部弹窗即时保存，此处无需再读取
 
             UI.showToast('设置已保存');
-            
+
             // 重新验证 API Key
             await this.checkApiKey();
         });

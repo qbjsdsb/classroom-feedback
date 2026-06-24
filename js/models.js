@@ -565,17 +565,6 @@ class DataStore {
     getDefaultPromptTemplates() {
         return [
             {
-                id: 'pt_default_praise',
-                name: '表扬鼓励型',
-                description: '侧重表扬和鼓励，适合表现好的学生',
-                category: '反馈风格',
-                prompt: '请侧重表扬和鼓励学生的优点，用温暖积极的语气，多肯定学生的进步和努力，让反馈充满正能量。对于不足之处，用建设性的方式委婉提出。',
-                modules: null,
-                isDefault: true,
-                createdAt: '2026-06-24T00:00:00.000Z',
-                updatedAt: '2026-06-24T00:00:00.000Z'
-            },
-            {
                 id: 'pt_default_problem',
                 name: '问题导向型',
                 description: '侧重发现和解决问题，适合需要改进的学生',
@@ -592,17 +581,6 @@ class DataStore {
                 description: '正式语气，适合与家长沟通',
                 category: '家长沟通',
                 prompt: '请使用正式、专业的语气撰写反馈，适合发给家长阅读。措辞严谨规范，既体现教师专业素养，又让家长清晰了解学生情况。避免过于口语化的表达。',
-                modules: null,
-                isDefault: true,
-                createdAt: '2026-06-24T00:00:00.000Z',
-                updatedAt: '2026-06-24T00:00:00.000Z'
-            },
-            {
-                id: 'pt_default_concise',
-                name: '简洁精炼型',
-                description: '简洁明了，直击要点',
-                category: '反馈风格',
-                prompt: '请用简洁精炼的语言撰写反馈，直击要点，避免冗长和重复。每个模块控制在最短字数范围内，用最少的文字传达最关键的信息。',
                 modules: null,
                 isDefault: true,
                 createdAt: '2026-06-24T00:00:00.000Z',
@@ -634,21 +612,33 @@ class DataStore {
     }
 
     initDefaultPromptTemplates() {
-        // 如果没有任何模板，添加默认模板
+        // 移除已废弃的默认模板（与语气设置重复）
+        const deprecatedIds = ['pt_default_praise', 'pt_default_concise'];
+        let changed = false;
+        for (const depId of deprecatedIds) {
+            const idx = this._promptTemplatesCache.findIndex(t => t.id === depId);
+            if (idx !== -1) {
+                this._promptTemplatesCache.splice(idx, 1);
+                changed = true;
+            }
+        }
+
         if (this._promptTemplatesCache.length === 0) {
             const defaults = this.getDefaultPromptTemplates();
             this._promptTemplatesCache = [...defaults];
-            this._savePromptTemplates();
+            changed = true;
         } else {
             // 补充缺失的默认模板（新增默认模板时自动添加）
             const defaults = this.getDefaultPromptTemplates();
             for (const def of defaults) {
                 if (!this._promptTemplatesCache.some(t => t.id === def.id)) {
                     this._promptTemplatesCache.push({ ...def });
+                    changed = true;
                 }
             }
-            this._savePromptTemplates();
         }
+
+        if (changed) this._savePromptTemplates();
     }
 }
 
