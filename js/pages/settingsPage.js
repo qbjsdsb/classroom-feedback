@@ -1,0 +1,1020 @@
+// settingsPage.js - 设置页（包含科目管理、反馈模块设置、风格自定义）
+
+class SettingsPage {
+    constructor() {
+        this.container = document.getElementById('settings-page');
+        this.apiKeyValid = null;
+    }
+
+    render() {
+        const apiKey = Storage.getApiKey();
+        const style = Storage.getStyle();
+        const speechConfig = Storage.getSpeechConfig();
+        
+        this.container.innerHTML = `
+            <header>
+                <button class="back-btn" onclick="app.navigate('students')">←</button>
+                <h1>⚙️ 设置</h1>
+            </header>
+
+            <div class="settings-sections">
+                <!-- 悬浮保存按钮（固定在右下角） -->
+                <button id="btn-save-settings" class="settings-fab-save">💾 保存</button>
+
+                <!-- API Key 设置 -->
+                <section class="settings-group">
+                    <h3>🔑 API Key</h3>
+                    <div class="form-group">
+                        <input type="password" id="api-key" placeholder="请输入您的 DeepSeek API Key"
+                               value="${escapeHtml(apiKey) || ''}">
+                        <div style="display:flex;gap:8px;margin-top:8px;">
+                            <button type="button" id="btn-toggle-key" class="secondary-btn" style="font-size:0.8rem;padding:6px 10px;">
+                                👁️ 显示/隐藏
+                            </button>
+                            <a href="#" id="apikey-help" style="color:var(--primary);font-size:0.8rem;text-decoration:none;font-weight:500;align-self:center;">
+                                ❓ 如何获取？
+                            </a>
+                        </div>
+                        <div id="api-key-status"></div>
+                        <details class="advanced-settings" style="margin-top:10px;">
+                            <summary style="font-size:0.85rem;color:var(--text-muted);cursor:pointer;">高级设置</summary>
+                            <div class="advanced-content" style="margin-top:8px;">
+                                <label style="font-size:0.85rem;">API 基础地址（可选）</label>
+                                <input type="text" id="api-base-url" placeholder="https://api.deepseek.com"
+                                       value="${escapeHtml(Storage.getApiBaseUrl()) || ''}" style="font-size:0.9rem;padding:8px;">
+                                <p class="hint-text" style="font-size:0.75rem;">使用 DeepSeek 可留空；使用兼容接口请填写完整地址</p>
+                            </div>
+                        </details>
+                    </div>
+                </section>
+
+                <!-- 语音识别设置 -->
+                <section class="settings-group">
+                    <h3>🎤 语音识别</h3>
+                    <div class="form-group">
+                        <div class="speech-provider-list">
+                            <label class="style-option ${speechConfig.provider === 'browser' ? 'active' : ''}">
+                                <input type="radio" name="speech-provider" value="browser" ${speechConfig.provider === 'browser' ? 'checked' : ''}>
+                                <span class="style-icon">🌐</span>
+                                <span class="style-name">浏览器内置</span>
+                                <span class="style-desc">免费，需联网</span>
+                            </label>
+                            <label class="style-option ${speechConfig.provider === 'whisper' ? 'active' : ''}">
+                                <input type="radio" name="speech-provider" value="whisper" ${speechConfig.provider === 'whisper' ? 'checked' : ''}>
+                                <span class="style-icon">🤖</span>
+                                <span class="style-name">本地AI</span>
+                                <span class="style-desc">离线，首次下载模型</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div id="speech-config-fields" style="margin-top:10px;">
+                        ${this.renderSpeechConfigFields(speechConfig)}
+                    </div>
+                </section>
+
+                <!-- 反馈风格设置 -->
+                <section class="settings-group">
+                    <h3>🎨 反馈风格</h3>
+                    <div class="form-group">
+                        <label style="font-size:0.85rem;color:var(--text-muted);margin-bottom:8px;">语气风格</label>
+                        <div class="style-options">
+                            <label class="style-option ${style.tone === 'friendly' ? 'active' : ''}">
+                                <input type="radio" name="tone" value="friendly" ${style.tone === 'friendly' ? 'checked' : ''}>
+                                <span class="style-icon">😊</span>
+                                <span class="style-name">亲切</span>
+                            </label>
+                            <label class="style-option ${style.tone === 'formal' ? 'active' : ''}">
+                                <input type="radio" name="tone" value="formal" ${style.tone === 'formal' ? 'checked' : ''}>
+                                <span class="style-icon">👔</span>
+                                <span class="style-name">正式</span>
+                            </label>
+                            <label class="style-option ${style.tone === 'concise' ? 'active' : ''}">
+                                <input type="radio" name="tone" value="concise" ${style.tone === 'concise' ? 'checked' : ''}>
+                                <span class="style-icon">⚡</span>
+                                <span class="style-name">简洁</span>
+                            </label>
+                            <label class="style-option ${style.tone === 'detailed' ? 'active' : ''}">
+                                <input type="radio" name="tone" value="detailed" ${style.tone === 'detailed' ? 'checked' : ''}>
+                                <span class="style-icon">📝</span>
+                                <span class="style-name">详细</span>
+                            </label>
+                            <label class="style-option ${style.tone === 'humorous' ? 'active' : ''}">
+                                <input type="radio" name="tone" value="humorous" ${style.tone === 'humorous' ? 'checked' : ''}>
+                                <span class="style-icon">😄</span>
+                                <span class="style-name">幽默</span>
+                            </label>
+                            <label class="style-option ${style.tone === 'encouraging' ? 'active' : ''}">
+                                <input type="radio" name="tone" value="encouraging" ${style.tone === 'encouraging' ? 'checked' : ''}>
+                                <span class="style-icon">💪</span>
+                                <span class="style-name">鼓励</span>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 更多设置（折叠面板） -->
+                <details class="settings-group settings-collapsible" open>
+                    <summary><h3>⚙️ 更多设置</h3></summary>
+                    <div class="collapsible-content">
+                        <!-- 输出格式 -->
+                        <div class="form-group compact">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="use-bullet-points" ${style.useBulletPoints ? 'checked' : ''}>
+                                <span class="toggle-switch"></span>
+                                <span>允许分点输出</span>
+                            </label>
+                        </div>
+
+                        <!-- Emoji 设置 -->
+                        <div class="form-group compact">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="use-emoji" ${style.useEmoji ? 'checked' : ''}>
+                                <span class="toggle-switch"></span>
+                                <span>使用 Emoji 表情</span>
+                            </label>
+                        </div>
+                        <div class="form-group emoji-position-group compact" style="margin-left:32px;${style.useEmoji ? '' : 'display:none;'}">
+                            <label style="font-size:0.8rem;color:var(--text-muted);">Emoji 位置</label>
+                            <div class="style-options" style="margin-top:6px;">
+                                <label class="style-option ${style.emojiPosition === 'content' ? 'active' : ''}" style="padding:6px 10px;">
+                                    <input type="radio" name="emoji-position" value="content" ${style.emojiPosition === 'content' ? 'checked' : ''}>
+                                    <span class="style-name" style="font-size:0.8rem;">融入内容</span>
+                                </label>
+                                <label class="style-option ${style.emojiPosition === 'title' ? 'active' : ''}" style="padding:6px 10px;">
+                                    <input type="radio" name="emoji-position" value="title" ${style.emojiPosition === 'title' ? 'checked' : ''}>
+                                    <span class="style-name" style="font-size:0.8rem;">标题后</span>
+                                </label>
+                                <label class="style-option ${style.emojiPosition === 'end' ? 'active' : ''}" style="padding:6px 10px;">
+                                    <input type="radio" name="emoji-position" value="end" ${style.emojiPosition === 'end' ? 'checked' : ''}>
+                                    <span class="style-name" style="font-size:0.8rem;">模块末尾</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- 日期设置 -->
+                        <div class="form-group compact">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="use-custom-date" ${style.useCustomDate ? 'checked' : ''}>
+                                <span class="toggle-switch"></span>
+                                <span>使用自定义日期</span>
+                            </label>
+                            <div class="custom-date-input" style="margin-top:6px;${style.useCustomDate ? '' : 'display:none;'}">
+                                <input type="date" id="custom-date" value="${style.customDate || ''}">
+                            </div>
+                        </div>
+
+                        <!-- 字数限制 -->
+                        <div class="form-group compact">
+                            <label style="font-size:0.85rem;">字数限制</label>
+                            <div style="display:flex;gap:10px;align-items:center;margin-top:6px;">
+                                <input type="number" id="min-length" value="${style.minLength || 50}" min="10" max="1000" style="flex:1;padding:8px;font-size:0.9rem;">
+                                <span style="color:var(--text-muted);font-size:0.85rem;">-</span>
+                                <input type="number" id="max-length" value="${style.maxLength || 150}" min="50" max="5000" style="flex:1;padding:8px;font-size:0.9rem;">
+                            </div>
+                            <p class="hint-text" style="font-size:0.75rem;margin-top:4px;">全局后备值，超长课程建议调至1000-2000字</p>
+                        </div>
+
+                        <!-- 按模块字数 -->
+                        <div class="form-group compact">
+                            <label style="font-size:0.85rem;">按模块字数</label>
+                            <div id="module-lengths-list" class="module-lengths-list" style="margin-top:6px;">
+                                ${this.renderModuleLengthsList(style)}
+                            </div>
+                        </div>
+
+                        <!-- 其他开关 -->
+                        <div class="form-group compact">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="name-shorten" ${style.nameShorten !== false ? 'checked' : ''}>
+                                <span class="toggle-switch"></span>
+                                <span>姓名截取（三字名取后两字）</span>
+                            </label>
+                        </div>
+                        <div class="form-group compact">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="include-parent-help" ${style.includeParentHelp ? 'checked' : ''}>
+                                <span class="toggle-switch"></span>
+                                <span>包含"请家长协助"内容</span>
+                            </label>
+                        </div>
+                        <div class="form-group compact">
+                            <label class="toggle-label">
+                                <input type="checkbox" id="strict-input" ${style.strictInput !== false ? 'checked' : ''}>
+                                <span class="toggle-switch"></span>
+                                <span>严格遵循输入内容（不编造）</span>
+                            </label>
+                        </div>
+
+                        <!-- 自定义要求 -->
+                        <div class="form-group compact">
+                            <label style="font-size:0.85rem;">自定义要求（可选）</label>
+                            <textarea id="custom-prompt" placeholder="例如：多使用鼓励性语言；每段不要太长..."
+                                style="width:100%;min-height:60px;padding:10px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;font-family:inherit;resize:vertical;margin-top:6px;">${style.customPrompt || ''}</textarea>
+                        </div>
+                    </div>
+                </details>
+
+                <!-- 科目管理 -->
+                <section class="settings-group">
+                    <h3>📚 科目管理</h3>
+                    <div id="subjects-list" class="subjects-manage-list">
+                        ${this.renderSubjectsList()}
+                    </div>
+                    <button id="btn-add-subject" class="secondary-btn" style="margin-top:10px;">+ 添加科目</button>
+                </section>
+
+                <!-- 科目专属模板 -->
+                <section class="settings-group">
+                    <h3>📖 科目专属模板</h3>
+                    <div id="subject-templates-list">
+                        ${this.renderSubjectTemplatesList()}
+                    </div>
+                </section>
+
+                <!-- 反馈模块设置 -->
+                <section class="settings-group">
+                    <h3>📋 反馈模块</h3>
+                    <div id="modules-list" class="modules-manage-list">
+                        ${this.renderModulesList()}
+                    </div>
+                    <button id="btn-add-module" class="secondary-btn" style="margin-top:10px;">+ 添加自定义模块</button>
+                </section>
+
+                <!-- 主题设置 -->
+                <section class="settings-group">
+                    <h3>🎨 界面主题</h3>
+                    <div class="theme-selector" id="theme-selector">
+                        <button class="theme-option ${Storage.getTheme() === 'default' ? 'active' : ''}" data-theme="default">
+                            <span class="theme-dot" style="background: linear-gradient(135deg, #6366F1, #8B5CF6);"></span>
+                            <span>默认紫</span>
+                        </button>
+                        <button class="theme-option ${Storage.getTheme() === 'warm' ? 'active' : ''}" data-theme="warm">
+                            <span class="theme-dot" style="background: linear-gradient(135deg, #D97706, #F59E0B);"></span>
+                            <span>温暖橙</span>
+                        </button>
+                        <button class="theme-option ${Storage.getTheme() === 'green' ? 'active' : ''}" data-theme="green">
+                            <span class="theme-dot" style="background: linear-gradient(135deg, #059669, #10B981);"></span>
+                            <span>清新绿</span>
+                        </button>
+                        <button class="theme-option ${Storage.getTheme() === 'dark' ? 'active' : ''}" data-theme="dark">
+                            <span class="theme-dot" style="background: linear-gradient(135deg, #1E293B, #334155);"></span>
+                            <span>深色</span>
+                        </button>
+                    </div>
+                </section>
+
+                <!-- 录音日志 -->
+                <section class="settings-group">
+                    <h3>📋 录音日志</h3>
+                    <p class="hint-text" style="margin-bottom:10px;">查看录音过程中的运行日志，便于排查问题</p>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button id="btn-view-logs" class="secondary-btn" style="flex:1;min-width:120px;">🔍 查看日志</button>
+                        <button id="btn-export-logs" class="secondary-btn" style="flex:1;min-width:120px;">📤 导出日志</button>
+                        <button id="btn-clear-logs" class="danger-btn" style="flex:1;min-width:120px;">🗑️ 清空日志</button>
+                    </div>
+                </section>
+
+                <!-- 数据管理 -->
+                <section class="settings-group">
+                    <h3>💾 数据管理</h3>
+                    ${this._renderBackupStatus()}
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button id="btn-export" class="secondary-btn" style="flex:1;min-width:120px;">📤 导出</button>
+                        <button id="btn-import" class="secondary-btn" style="flex:1;min-width:120px;">📥 导入</button>
+                        <input type="file" id="import-file" accept=".json" style="display:none">
+                    </div>
+                    <button id="btn-clear-all" class="danger-btn" style="margin-top:10px;width:100%;">🗑️ 清空所有数据</button>
+                </section>
+
+                <p class="hint-text" style="text-align:center;margin-top:8px;font-size:0.75rem;">
+                    课堂反馈助手 v1.7 · 纯前端应用，数据保存在本地
+                </p>
+            </div>
+        `;
+
+        this.bindEvents();
+        this.checkApiKey();
+    }
+
+    renderModuleLengthsList(style) {
+        const modules = Storage.getModules();
+        const lengths = style.moduleLengths || {};
+        
+        return modules.map((m, i) => {
+            const len = lengths[m.name] || { min: 50, max: 150 };
+            return `
+                <div class="module-length-item" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;padding:8px;background:var(--bg);border-radius:var(--radius-sm);">
+                    <span style="min-width:80px;font-size:0.9rem;">${escapeHtml(m.name)}</span>
+                    <div style="display:flex;gap:8px;flex:1;">
+                        <input type="number" class="module-min-length" data-module="${escapeHtml(m.name)}" value="${len.min}" min="10" max="1000"
+                            style="flex:1;padding:6px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.85rem;">
+                        <span style="color:var(--text-muted);font-size:0.85rem;align-self:center;">-</span>
+                        <input type="number" class="module-max-length" data-module="${escapeHtml(m.name)}" value="${len.max}" min="50" max="5000"
+                            style="flex:1;padding:6px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.85rem;">
+                    </div>
+                    <span style="font-size:0.75rem;color:var(--text-muted);">字</span>
+                </div>
+            `;
+        }).join('');
+    }
+
+    renderSpeechConfigFields(config) {
+        if (config.provider === 'browser') {
+            return `<p class="hint-text">使用浏览器内置语音识别（Web Speech API），无需额外配置。推荐使用 Edge 浏览器获得最佳效果，Chrome 也可以正常使用。</p>`;
+        }
+
+        if (config.provider === 'whisper') {
+            return `
+                <div style="padding:12px;background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--border-light);">
+                    <p class="hint-text" style="margin-bottom:8px;">
+                        🤖 <strong>本地AI语音识别</strong>（基于 OpenAI Whisper 模型）
+                    </p>
+                    <p class="hint-text" style="margin-bottom:6px;">
+                        ✅ 完全离线运行，无需联网，隐私安全<br>
+                        ✅ 支持99+语言，中文识别准确率高<br>
+                        ⚠️ 首次使用需下载模型文件（约40MB），请耐心等待<br>
+                        ⚠️ 推荐使用 Edge 浏览器，Chrome 也可以正常使用，设备性能越好识别越快
+                    </p>
+                    <div id="whisper-model-status" style="margin-top:8px;padding:8px;background:var(--bg-secondary);border-radius:var(--radius-sm);font-size:0.85rem;color:var(--text-muted);">
+                        模型状态：未加载
+                    </div>
+                    <button id="btn-preload-whisper" class="secondary-btn" style="margin-top:8px;width:100%;">预加载模型（首次使用建议提前下载）</button>
+                </div>
+            `;
+        }
+
+        return `<p class="hint-text">请选择一个语音识别引擎</p>`;
+    }
+
+    renderSubjectsList() {
+        const subjects = store.getSubjects();
+        if (subjects.length === 0) {
+            return '<p class="hint-text">暂无科目，请点击下方添加</p>';
+        }
+        return subjects.map((s, i) => `
+            <div class="manage-item" data-id="${s.id}" data-type="subject">
+                <div class="manage-item-info">
+                    <span class="color-dot" style="background: ${escapeHtml(s.color)}"></span>
+                    <span class="manage-item-name">${escapeHtml(s.name)}</span>
+                </div>
+                <div class="manage-item-actions">
+                    <input type="color" class="color-picker" value="${escapeHtml(s.color)}" 
+                           onchange="settingsPage.updateSubjectColor('${s.id}', this.value)">
+                    <button class="delete-btn" onclick="settingsPage.deleteSubject('${s.id}')">🗑️</button>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    renderModulesList() {
+        const modules = Storage.getModules();
+        return modules.map((m, i) => `
+            <div class="manage-item" data-index="${i}" style="flex-direction:column;align-items:flex-start;gap:6px;">
+                <div style="display:flex;align-items:center;gap:8px;width:100%;">
+                    <input type="checkbox" ${m.enabled ? 'checked' : ''}
+                           onchange="settingsPage.toggleModule(${i})">
+                    <span class="manage-item-name">${escapeHtml(m.name)}</span>
+                    <div style="margin-left:auto;display:flex;gap:2px;">
+                        <button class="sort-btn" onclick="settingsPage.moveModule(${i}, -1)" ${i === 0 ? 'disabled style="opacity:0.3;cursor:default;"' : ''} title="上移">↑</button>
+                        <button class="sort-btn" onclick="settingsPage.moveModule(${i}, 1)" ${i === modules.length - 1 ? 'disabled style="opacity:0.3;cursor:default;"' : ''} title="下移">↓</button>
+                        ${m.custom ? `<button class="delete-btn" onclick="settingsPage.deleteModule(${i})">🗑️</button>` : ''}
+                    </div>
+                </div>
+                ${m.custom ? `
+                <input type="text" class="module-desc-input" data-module-index="${i}"
+                       placeholder="描述该模块应生成什么内容（如：针对家长的配合建议）"
+                       value="${escapeHtml(m.description || '')}"
+                       style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.8rem;margin-left:28px;">
+                ` : ''}
+            </div>
+        `).join('');
+    }
+
+    renderSubjectTemplatesList() {
+        const subjects = store.getSubjects();
+        if (subjects.length === 0) {
+            return '<p class="hint-text">暂无科目，请先添加科目</p>';
+        }
+        return subjects.map(s => {
+            const template = store.getSubjectTemplate(s.id);
+            const hasTemplate = template && template.prompt;
+            return `
+                <div class="manage-item" style="flex-direction:column;align-items:flex-start;gap:8px;padding:16px 0;">
+                    <div style="display:flex;align-items:center;gap:8px;width:100%;">
+                        <span class="color-dot" style="background:${escapeHtml(s.color)};width:12px;height:12px;"></span>
+                        <span class="manage-item-name">${escapeHtml(s.name)}</span>
+                        ${hasTemplate ? '<span style="font-size:0.75rem;color:var(--success);background:rgba(16,185,129,0.1);padding:2px 8px;border-radius:10px;">已配置</span>' : ''}
+                    </div>
+                    <textarea 
+                        class="subject-template-input"
+                        data-subject-id="${s.id}"
+                        placeholder="例如：数学科目需要强调解题思路、公式推导过程、计算准确性等..."
+                        style="width:100%;min-height:60px;padding:10px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;font-family:inherit;resize:vertical;margin-top:4px;"
+                    >${hasTemplate ? escapeHtml(template.prompt) : ''}</textarea>
+                </div>
+            `;
+        }).join('');
+    }
+
+    async checkApiKey() {
+        const apiKey = Storage.getApiKey();
+        const statusEl = document.getElementById('api-key-status');
+        if (!statusEl) return;
+        
+        if (!apiKey) {
+            statusEl.innerHTML = '';
+            return;
+        }
+
+        statusEl.innerHTML = '<span class="api-key-status" style="color:var(--text-muted);">⏳ 验证中...</span>';
+        
+        const baseUrl = Storage.getApiBaseUrl() || 'https://api.deepseek.com';
+        try {
+            const response = await fetch(`${baseUrl}/models`, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${apiKey}` }
+            });
+            
+            if (response.ok) {
+                statusEl.innerHTML = '<span class="api-key-status valid">✅ API Key 有效</span>';
+                this.apiKeyValid = true;
+            } else {
+                statusEl.innerHTML = '<span class="api-key-status invalid">❌ API Key 无效或已过期</span>';
+                this.apiKeyValid = false;
+            }
+        } catch (e) {
+            statusEl.innerHTML = '<span class="api-key-status invalid">❌ 验证失败，请检查网络</span>';
+            this.apiKeyValid = false;
+        }
+    }
+
+    bindEvents() {
+        // 显示/隐藏 API Key
+        document.getElementById('btn-toggle-key')?.addEventListener('click', () => {
+            const input = document.getElementById('api-key');
+            input.type = input.type === 'password' ? 'text' : 'password';
+        });
+
+        document.getElementById('apikey-help')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            app.openHelpModal();
+        });
+
+        // 风格选项点击效果
+        document.querySelectorAll('.style-option').forEach(option => {
+            option.addEventListener('click', () => {
+                const parent = option.parentElement;
+                parent.querySelectorAll('.style-option').forEach(o => o.classList.remove('active'));
+                option.classList.add('active');
+                const radio = option.querySelector('input[type="radio"]');
+                if (radio) radio.checked = true;
+            });
+        });
+
+        // Emoji 开关联动
+        document.getElementById('use-emoji')?.addEventListener('change', (e) => {
+            const posGroup = document.querySelector('.emoji-position-group');
+            if (posGroup) {
+                posGroup.style.display = e.target.checked ? 'block' : 'none';
+            }
+        });
+
+        // 自定义日期开关联动
+        document.getElementById('use-custom-date')?.addEventListener('change', (e) => {
+            const dateInput = document.querySelector('.custom-date-input');
+            if (dateInput) {
+                dateInput.style.display = e.target.checked ? 'block' : 'none';
+            }
+        });
+
+        // 语音识别引擎选项切换
+        document.querySelectorAll('input[name="speech-provider"]').forEach(radio => {
+            radio.addEventListener('change', () => {
+                const provider = radio.value;
+                const currentConfig = Storage.getSpeechConfig();
+                const newConfig = { ...currentConfig, provider };
+                Storage.saveSpeechConfig(newConfig);
+
+                // 更新配置字段显示
+                const fieldsContainer = document.getElementById('speech-config-fields');
+                if (fieldsContainer) {
+                    fieldsContainer.innerHTML = this.renderSpeechConfigFields(newConfig);
+                }
+
+                // 更新选项的 active 状态
+                document.querySelectorAll('.speech-provider-list .style-option').forEach(opt => {
+                    opt.classList.remove('active');
+                });
+                radio.closest('.style-option').classList.add('active');
+
+                // 重新绑定 Whisper 预加载按钮（因为 innerHTML 替换了 DOM）
+                document.getElementById('btn-preload-whisper')?.addEventListener('click', () => {
+                    if (typeof recorder !== 'undefined' && recorder.preloadWhisper) {
+                        recorder.preloadWhisper();
+                    }
+                });
+            });
+        });
+
+        // Whisper 预加载按钮
+        document.getElementById('btn-preload-whisper')?.addEventListener('click', () => {
+            if (typeof recorder !== 'undefined' && recorder.preloadWhisper) {
+                recorder.preloadWhisper();
+            }
+        });
+
+        // 主题切换
+        document.querySelectorAll('.theme-option').forEach(option => {
+            option.addEventListener('click', () => {
+                document.querySelectorAll('.theme-option').forEach(o => o.classList.remove('active'));
+                option.classList.add('active');
+                const theme = option.dataset.theme;
+                Storage.setTheme(theme);
+                UI.showToast('主题已切换');
+            });
+        });
+
+        document.getElementById('btn-add-subject')?.addEventListener('click', () => {
+            const name = prompt('请输入科目名称：');
+            if (name && name.trim()) {
+                const colors = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316'];
+                const randomColor = colors[Math.floor(Math.random() * colors.length)];
+                store.addSubject(name.trim(), randomColor);
+                this.render();
+            }
+        });
+
+        document.getElementById('btn-add-module')?.addEventListener('click', () => {
+            const name = prompt('请输入模块名称：');
+            if (name && name.trim()) {
+                Storage.addModule(name.trim());
+                this.render();
+            }
+        });
+
+        document.getElementById('btn-save-settings')?.addEventListener('click', async () => {
+            const apiKey = document.getElementById('api-key').value.trim();
+            const apiBaseUrl = document.getElementById('api-base-url').value.trim();
+
+            Storage.setApiKey(apiKey);
+            // apiBaseUrl 无论是否为空都保存，以支持清空自定义地址回退到默认值
+            Storage.setApiBaseUrl(apiBaseUrl);
+
+            // 保存风格设置（包含所有新配置）
+            const toneEl = document.querySelector('input[name="tone"]:checked');
+            const minLength = parseInt(document.getElementById('min-length')?.value) || 50;
+            const maxLength = parseInt(document.getElementById('max-length')?.value) || 150;
+            const nameShorten = document.getElementById('name-shorten')?.checked ?? true;
+            const useEmoji = document.getElementById('use-emoji')?.checked ?? false;
+            const emojiPosition = document.querySelector('input[name="emoji-position"]:checked')?.value || 'content';
+            const useBulletPoints = document.getElementById('use-bullet-points')?.checked ?? false;
+            const includeParentHelp = document.getElementById('include-parent-help')?.checked ?? false;
+            const strictInput = document.getElementById('strict-input')?.checked ?? true;
+            const customPrompt = document.getElementById('custom-prompt')?.value.trim() || '';
+            const useCustomDate = document.getElementById('use-custom-date')?.checked ?? false;
+            const customDate = document.getElementById('custom-date')?.value || '';
+            
+            // 收集按模块字数限制
+            const moduleLengths = {};
+            document.querySelectorAll('.module-length-item').forEach(item => {
+                const moduleName = item.querySelector('.module-min-length')?.dataset.module;
+                const min = parseInt(item.querySelector('.module-min-length')?.value) || 50;
+                const max = parseInt(item.querySelector('.module-max-length')?.value) || 150;
+                if (moduleName) {
+                    moduleLengths[moduleName] = { min, max };
+                }
+            });
+            
+            Storage.saveStyle({
+                tone: toneEl ? toneEl.value : 'formal',
+                minLength,
+                maxLength,
+                moduleLengths,
+                nameShorten,
+                useEmoji,
+                emojiPosition,
+                useBulletPoints,
+                includeParentHelp,
+                strictInput,
+                customPrompt,
+                useCustomDate,
+                customDate,
+                language: 'zh'
+            });
+
+            // 保存模块状态
+            const modules = [];
+            document.querySelectorAll('.modules-manage-list .manage-item').forEach(item => {
+                const checkbox = item.querySelector('input[type="checkbox"]');
+                const name = item.querySelector('.manage-item-name').textContent;
+                const isCustom = item.querySelector('.delete-btn') !== null;
+                const descInput = item.querySelector('.module-desc-input');
+                const description = descInput ? descInput.value.trim() : '';
+                modules.push({
+                    name,
+                    enabled: checkbox.checked,
+                    custom: isCustom,
+                    ...(isCustom && description ? { description } : {})
+                });
+            });
+            Storage.saveModules(modules);
+
+            // 保存语音识别配置
+            const speechProvider = document.querySelector('input[name="speech-provider"]:checked');
+            Storage.saveSpeechConfig({
+                provider: speechProvider ? speechProvider.value : 'browser'
+            });
+
+            // 保存科目专属模板
+            document.querySelectorAll('.subject-template-input').forEach(textarea => {
+                const subjectId = textarea.dataset.subjectId;
+                const prompt = textarea.value.trim();
+                if (subjectId) {
+                    if (prompt) {
+                        store.setSubjectTemplate(subjectId, { prompt, updatedAt: new Date().toISOString() });
+                    } else {
+                        store.deleteSubjectTemplate(subjectId);
+                    }
+                }
+            });
+
+            UI.showToast('设置已保存');
+            
+            // 重新验证 API Key
+            await this.checkApiKey();
+        });
+
+        document.getElementById('btn-export')?.addEventListener('click', () => this.exportData());
+        document.getElementById('btn-import')?.addEventListener('click', () => {
+            document.getElementById('import-file').click();
+        });
+        document.getElementById('import-file')?.addEventListener('change', (e) => this.importData(e));
+
+        document.getElementById('btn-clear-all')?.addEventListener('click', () => {
+            UI.showConfirmInput('确定清空所有数据？此操作不可恢复！', '删除', () => {
+                Storage.reset();
+                location.reload();
+            });
+        });
+
+        // 录音日志按钮
+        document.getElementById('btn-view-logs')?.addEventListener('click', () => this.showLogPanel());
+        document.getElementById('btn-export-logs')?.addEventListener('click', () => this.exportLogs());
+        document.getElementById('btn-clear-logs')?.addEventListener('click', () => {
+            UI.showConfirm('确定清空所有录音日志？', () => {
+                if (typeof recorder !== 'undefined') {
+                    recorder.clearLogs();
+                    UI.showToast('录音日志已清空');
+                }
+            });
+        });
+    }
+
+    updateSubjectColor(id, color) {
+        store.updateSubject(id, { color });
+    }
+
+    /** 显示录音日志面板 */
+    showLogPanel() {
+        if (typeof recorder === 'undefined') {
+            UI.showToast('录音模块未加载');
+            return;
+        }
+
+        const logs = recorder.getLogs();
+        const totalLogs = logs.length;
+
+        // 创建模态框
+        const overlay = document.createElement('div');
+        overlay.id = 'log-panel-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center;padding:16px;';
+
+        const panel = document.createElement('div');
+        panel.style.cssText = 'background:var(--bg);border-radius:var(--radius);width:100%;max-width:700px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3);';
+
+        panel.innerHTML = `
+            <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-light);">
+                <h3 style="margin:0;font-size:1.1rem;">📋 录音日志 <span style="font-size:0.8rem;color:var(--text-muted);font-weight:normal;">(${totalLogs}条)</span></h3>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <select id="log-level-filter" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.8rem;background:var(--bg);color:var(--text);">
+                        <option value="all">全部</option>
+                        <option value="error">错误</option>
+                        <option value="warn">警告</option>
+                        <option value="info">信息</option>
+                    </select>
+                    <button id="log-panel-close" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-muted);padding:0 4px;line-height:1;">&times;</button>
+                </div>
+            </div>
+            <div id="log-panel-content" style="flex:1;overflow-y:auto;padding:12px 16px;font-family:monospace;font-size:0.8rem;line-height:1.6;">
+                ${totalLogs === 0 ? '<div style="text-align:center;color:var(--text-muted);padding:40px 0;">暂无日志记录</div>' : ''}
+            </div>
+            <div style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border-light);">
+                <button id="log-copy-btn" class="secondary-btn" style="flex:1;font-size:0.85rem;">📋 复制</button>
+                <button id="log-export-btn" class="secondary-btn" style="flex:1;font-size:0.85rem;">📤 导出</button>
+                <button id="log-refresh-btn" class="secondary-btn" style="flex:1;font-size:0.85rem;">🔄 刷新</button>
+            </div>
+        `;
+
+        overlay.appendChild(panel);
+        document.body.appendChild(overlay);
+
+        // 渲染日志条目
+        const renderLogs = (filter = 'all') => {
+            const content = document.getElementById('log-panel-content');
+            if (!content) return;
+
+            const filtered = filter === 'all' ? logs : logs.filter(e => e.level === filter);
+            if (filtered.length === 0) {
+                content.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px 0;">无匹配日志</div>';
+                return;
+            }
+
+            // 按时间倒序（最新的在上面）
+            const sorted = [...filtered].reverse();
+            content.innerHTML = sorted.map(e => {
+                const levelColor = e.level === 'error' ? 'var(--error)' : e.level === 'warn' ? 'var(--warning)' : 'var(--text-muted)';
+                const levelBg = e.level === 'error' ? 'rgba(239,68,68,0.1)' : e.level === 'warn' ? 'rgba(245,158,11,0.1)' : 'transparent';
+                const extra = e.extra ? `<span style="color:var(--text-muted);"> | ${escapeHtml(String(e.extra))}</span>` : '';
+                return `<div style="padding:6px 8px;border-left:3px solid ${levelColor};background:${levelBg};margin-bottom:4px;border-radius:0 4px 4px 0;">
+                    <span style="color:var(--text-muted);">[${escapeHtml(e.time)}]</span>
+                    <span style="color:${levelColor};font-weight:600;">${e.level.toUpperCase()}</span>
+                    <span>${escapeHtml(e.event)}</span>${extra}
+                    <div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">${escapeHtml(e.state)} | ${escapeHtml(e.provider)}</div>
+                </div>`;
+            }).join('');
+        };
+
+        renderLogs();
+
+        // 事件绑定
+        document.getElementById('log-panel-close')?.addEventListener('click', () => {
+            overlay.remove();
+        });
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) overlay.remove();
+        });
+        document.getElementById('log-level-filter')?.addEventListener('change', (e) => {
+            renderLogs(e.target.value);
+        });
+        document.getElementById('log-copy-btn')?.addEventListener('click', () => {
+            const text = recorder.exportLogs();
+            navigator.clipboard.writeText(text).then(() => {
+                UI.showToast('日志已复制到剪贴板');
+            }).catch(() => {
+                UI.showToast('复制失败，请使用导出功能');
+            });
+        });
+        document.getElementById('log-export-btn')?.addEventListener('click', () => {
+            this.exportLogs();
+        });
+        document.getElementById('log-refresh-btn')?.addEventListener('click', () => {
+            // 重新获取日志并渲染
+            const newLogs = recorder.getLogs();
+            const filter = document.getElementById('log-level-filter')?.value || 'all';
+            const content = document.getElementById('log-panel-content');
+            if (!content) return;
+
+            const filtered = filter === 'all' ? newLogs : newLogs.filter(e => e.level === filter);
+            const countEl = panel.querySelector('h3 span');
+            if (countEl) countEl.textContent = `(${newLogs.length}条)`;
+
+            if (filtered.length === 0) {
+                content.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:40px 0;">无匹配日志</div>';
+                return;
+            }
+
+            const sorted = [...filtered].reverse();
+            content.innerHTML = sorted.map(e => {
+                const levelColor = e.level === 'error' ? 'var(--error)' : e.level === 'warn' ? 'var(--warning)' : 'var(--text-muted)';
+                const levelBg = e.level === 'error' ? 'rgba(239,68,68,0.1)' : e.level === 'warn' ? 'rgba(245,158,11,0.1)' : 'transparent';
+                const extra = e.extra ? `<span style="color:var(--text-muted);"> | ${escapeHtml(String(e.extra))}</span>` : '';
+                return `<div style="padding:6px 8px;border-left:3px solid ${levelColor};background:${levelBg};margin-bottom:4px;border-radius:0 4px 4px 0;">
+                    <span style="color:var(--text-muted);">[${escapeHtml(e.time)}]</span>
+                    <span style="color:${levelColor};font-weight:600;">${e.level.toUpperCase()}</span>
+                    <span>${escapeHtml(e.event)}</span>${extra}
+                    <div style="font-size:0.7rem;color:var(--text-muted);margin-top:2px;">${escapeHtml(e.state)} | ${escapeHtml(e.provider)}</div>
+                </div>`;
+            }).join('');
+        });
+    }
+
+    /** 导出录音日志为文本文件 */
+    exportLogs() {
+        if (typeof recorder === 'undefined') {
+            UI.showToast('录音模块未加载');
+            return;
+        }
+
+        const text = recorder.exportLogs();
+        if (text === '暂无录音日志') {
+            UI.showToast('暂无日志可导出');
+            return;
+        }
+
+        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `recorder-log-${new Date().toISOString().replace(/[:.]/g, '-')}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        UI.showToast('日志已导出');
+    }
+
+    deleteSubject(id) {
+        UI.showConfirm('确定删除这个科目？相关学生关联也将被移除。', () => {
+            store.deleteSubject(id);
+            this.render();
+        });
+    }
+
+    _renderBackupStatus() {
+        const lastTime = Storage.getLastBackupTime();
+        if (!lastTime) {
+            return `<div style="padding:8px 12px;background:rgba(245,158,11,0.1);border-radius:var(--radius-sm);margin-bottom:10px;font-size:0.85rem;color:var(--warning);">⚠️ 尚未备份过数据，建议立即导出备份</div>`;
+        }
+        const daysSince = Math.floor((Date.now() - lastTime) / (1000 * 60 * 60 * 24));
+        const dateStr = new Date(lastTime).toLocaleDateString('zh-CN');
+        if (daysSince >= 7) {
+            return `<div style="padding:8px 12px;background:rgba(245,158,11,0.1);border-radius:var(--radius-sm);margin-bottom:10px;font-size:0.85rem;color:var(--warning);">⚠️ 距上次备份已 ${daysSince} 天（${dateStr}），建议导出备份</div>`;
+        }
+        return `<div style="padding:8px 12px;background:rgba(16,185,129,0.1);border-radius:var(--radius-sm);margin-bottom:10px;font-size:0.85rem;color:var(--success);">✅ 上次备份：${dateStr}</div>`;
+    }
+
+    toggleModule(index) {
+        Storage.toggleModule(index);
+    }
+
+    moveModule(index, direction) {
+        // 排序前先保存当前描述输入框的值
+        this._saveModuleDescriptions();
+        Storage.swapModule(index, direction);
+        this.render();
+    }
+
+    /** 保存模块描述输入框的当前值到Storage */
+    _saveModuleDescriptions() {
+        const modules = Storage.getModules();
+        document.querySelectorAll('.module-desc-input').forEach(input => {
+            const idx = parseInt(input.dataset.moduleIndex);
+            if (modules[idx] && modules[idx].custom) {
+                modules[idx].description = input.value.trim();
+            }
+        });
+        Storage.saveModules(modules);
+    }
+
+    deleteModule(index) {
+        UI.showConfirm('确定删除这个模块？', () => {
+            Storage.deleteModule(index);
+            this.render();
+        });
+    }
+
+    exportData() {
+        const data = {
+            students: store.getStudents(),
+            subjects: store.getSubjects(),
+            studentSubjects: store._studentSubjects,
+            settings: {
+                apiBaseUrl: Storage.getApiBaseUrl(),
+                modules: Storage.getModules(),
+                style: Storage.getStyle(),
+                speechConfig: Storage.getSpeechConfig()
+            },
+            exportDate: new Date().toISOString()
+        };
+
+        // 导出反馈历史
+        data.feedbackHistory = {};
+        store.getStudents().forEach(s => {
+            const history = store.getFeedbackHistory(s.id, 50);
+            if (history.length > 0) {
+                data.feedbackHistory[s.id] = history;
+            }
+        });
+
+        // 导出科目专属模板
+        data.subjectTemplates = {};
+        store.getSubjects().forEach(s => {
+            const template = store.getSubjectTemplate(s.id);
+            if (template) {
+                data.subjectTemplates[s.id] = template;
+            }
+        });
+
+        // 导出学生常用点评模板
+        data.studentTemplates = {};
+        store.getStudents().forEach(s => {
+            const templates = store.getStudentTemplates(s.id);
+            if (templates.length > 0) {
+                data.studentTemplates[s.id] = templates;
+            }
+        });
+
+        // 导出快捷回复
+        data.quickReplies = store.getQuickReplies();
+
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `class-feedback-backup-${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        Storage.setLastBackupTime();
+        UI.showToast('数据已导出');
+    }
+
+    importData(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            let data;
+            try {
+                data = JSON.parse(e.target.result);
+            } catch {
+                UI.showToast('导入失败：文件格式错误');
+                return;
+            }
+
+            if (!data || typeof data !== 'object') {
+                UI.showToast('导入失败：文件格式错误');
+                return;
+            }
+
+            try {
+                if (data.students) {
+                    localStorage.setItem('cf_students', JSON.stringify(data.students));
+                }
+                if (data.subjects) {
+                    localStorage.setItem('cf_subjects', JSON.stringify(data.subjects));
+                }
+                if (data.studentSubjects) {
+                    localStorage.setItem('cf_student_subjects', JSON.stringify(data.studentSubjects));
+                }
+                if (data.settings) {
+                    if (Object.prototype.hasOwnProperty.call(data.settings, 'apiBaseUrl')) Storage.setApiBaseUrl(data.settings.apiBaseUrl);
+                    if (data.settings.modules) Storage.saveModules(data.settings.modules);
+                    if (data.settings.style) Storage.saveStyle(data.settings.style);
+                    if (data.settings.speechConfig) Storage.saveSpeechConfig(data.settings.speechConfig);
+                }
+                if (data.feedbackHistory && typeof data.feedbackHistory === 'object') {
+                    Object.entries(data.feedbackHistory).forEach(([studentId, history]) => {
+                        try {
+                            localStorage.setItem(`cf_feedback_${studentId}`, JSON.stringify(history));
+                        } catch (storageErr) {
+                            console.warn(`导入反馈历史失败 (${studentId}):`, storageErr);
+                        }
+                    });
+                }
+                // 导入科目专属模板
+                if (data.subjectTemplates && typeof data.subjectTemplates === 'object') {
+                    Object.entries(data.subjectTemplates).forEach(([subjectId, template]) => {
+                        try {
+                            localStorage.setItem(`cf_subject_template_${subjectId}`, JSON.stringify(template));
+                        } catch (storageErr) {
+                            console.warn(`导入科目模板失败 (${subjectId}):`, storageErr);
+                        }
+                    });
+                }
+                // 导入学生常用点评模板
+                if (data.studentTemplates && typeof data.studentTemplates === 'object') {
+                    Object.entries(data.studentTemplates).forEach(([studentId, templates]) => {
+                        try {
+                            localStorage.setItem(`cf_templates_${studentId}`, JSON.stringify(templates));
+                        } catch (storageErr) {
+                            console.warn(`导入学生模板失败 (${studentId}):`, storageErr);
+                        }
+                    });
+                }
+                // 导入快捷回复
+                if (data.quickReplies && Array.isArray(data.quickReplies)) {
+                    try {
+                        localStorage.setItem('cf_quick_replies', JSON.stringify(data.quickReplies));
+                    } catch (storageErr) {
+                        console.warn('导入快捷回复失败:', storageErr);
+                    }
+                }
+
+                UI.showToast('数据已导入，页面即将刷新');
+                setTimeout(() => location.reload(), 1500);
+            } catch (err) {
+                UI.showToast('导入失败：' + (err.message || '未知错误'));
+            }
+        };
+        reader.onerror = () => {
+            UI.showToast('导入失败：文件读取错误');
+        };
+        reader.readAsText(file);
+        event.target.value = '';
+    }
+}
+
+const settingsPage = new SettingsPage();

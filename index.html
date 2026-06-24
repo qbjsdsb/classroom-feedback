@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>课堂反馈助手</title>
+    <link rel="stylesheet" href="css/style.css?v=36">
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
+    <link rel="apple-touch-icon" href="icon.svg">
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#6366F1">
+</head>
+<body>
+    <div class="desktop-layout">
+        <!-- 桌面端侧边栏 -->
+        <aside class="desktop-sidebar">
+            <div class="sidebar-logo">📚 课堂反馈助手</div>
+            <nav class="sidebar-nav">
+                <button class="sidebar-nav-item active" data-page="students" onclick="app.navigate('students')">
+                    <span class="nav-icon">👥</span>
+                    <span>学生管理</span>
+                </button>
+                <button class="sidebar-nav-item" data-page="record" onclick="app.navigate('record')">
+                    <span class="nav-icon">🎙️</span>
+                    <span>课堂录音</span>
+                </button>
+                <button class="sidebar-nav-item" data-page="history" onclick="app.navigate('history')">
+                    <span class="nav-icon">📋</span>
+                    <span>历史反馈</span>
+                </button>
+                <button class="sidebar-nav-item" data-page="settings" onclick="app.openSettings()">
+                    <span class="nav-icon">⚙️</span>
+                    <span>系统设置</span>
+                </button>
+            </nav>
+            <div class="sidebar-footer">
+                <span>课堂反馈助手 v1.7 · 纯前端应用</span>
+                <a href="tutorial.html" class="help-link" title="使用教程">❓</a>
+            </div>
+        </aside>
+
+        <div class="desktop-main">
+            <!-- 页面容器 -->
+            <div id="pages-container">
+                <!-- 学生列表页 -->
+                <div id="students-page" class="page"></div>
+
+                <!-- 学生表单页 -->
+                <div id="student-form-page" class="page"></div>
+
+                <!-- 科目选择页 -->
+                <div id="subject-select-page" class="page"></div>
+
+                <!-- 录音页 -->
+                <div id="record-page" class="page"></div>
+
+                <!-- 历史反馈页 -->
+                <div id="history-page" class="page"></div>
+
+                <!-- 设置页 -->
+                <div id="settings-page" class="page"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部导航（移动端） -->
+    <nav class="bottom-nav">
+        <button class="bottom-nav-item active" data-page="students" onclick="app.navigate('students')">
+            <span class="nav-icon">👥</span>
+            <span>学生</span>
+        </button>
+        <button class="bottom-nav-item" data-page="record" onclick="app.navigate('record')">
+            <span class="nav-icon">🎙️</span>
+            <span>录音</span>
+        </button>
+        <button class="bottom-nav-item" data-page="settings" onclick="app.openSettings()">
+            <span class="nav-icon">⚙️</span>
+            <span>设置</span>
+        </button>
+    </nav>
+
+    <!-- 反馈结果弹窗 -->
+    <div id="result-modal" class="modal">
+        <div class="modal-content">
+            <header>
+                <h2>📋 课堂反馈</h2>
+                <button class="close-btn" aria-label="关闭">&times;</button>
+            </header>
+            <div class="modal-body">
+                <!-- 小组模式：顶部学生标签 -->
+                <div id="group-tabs-container" class="group-tabs-container" style="display:none;"></div>
+                <div class="feedback-title" id="feedback-title"></div>
+                <div id="feedback-content"></div>
+                <!-- 小组模式：底部翻页导航 -->
+                <div id="group-nav-container" class="group-nav-container" style="display:none;">
+                    <button class="group-nav-btn" id="group-nav-prev">← 上一个</button>
+                    <span class="group-nav-indicator" id="group-nav-indicator">1 / 3</span>
+                    <button class="group-nav-btn" id="group-nav-next">下一个 →</button>
+                </div>
+            </div>
+            <footer>
+                <button id="btn-copy" class="primary-btn">📋 一键复制</button>
+                <button id="btn-regenerate" class="secondary-btn">🔄 重新生成</button>
+            </footer>
+        </div>
+    </div>
+
+    <!-- API Key 帮助弹窗 -->
+    <div id="help-modal" class="modal">
+        <div class="modal-content">
+            <header>
+                <h2>如何获取 API Key</h2>
+                <button class="close-btn" aria-label="关闭">&times;</button>
+            </header>
+            <div class="modal-body">
+                <h3>方式一：DeepSeek（推荐）</h3>
+                <ol>
+                    <li>访问 <a href="https://platform.deepseek.com" target="_blank">platform.deepseek.com</a></li>
+                    <li>注册账号并登录</li>
+                    <li>进入"API Keys"页面，点击"创建 API Key"</li>
+                    <li>复制生成的 Key，粘贴到上方输入框</li>
+                </ol>
+                <p class="hint">新用户有免费额度，后续费用约 ¥0.003/千字</p>
+
+                <h3>方式二：通义千问</h3>
+                <ol>
+                    <li>访问 <a href="https://dashscope.aliyun.com" target="_blank">dashscope.aliyun.com</a></li>
+                    <li>使用阿里云账号登录</li>
+                    <li>进入"API-KEY 管理"创建 Key</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <!-- 底部弹窗容器 -->
+    <div id="bottom-sheet" class="bottom-sheet">
+        <div class="bottom-sheet-content"></div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/storage.js?v=34"></script>
+    <script src="js/models.js?v=36"></script>
+    <script src="js/recorder.js?v=44"></script>
+    <script src="js/ai.js?v=35"></script>
+    <script src="js/ui.js?v=36"></script>
+    <script src="js/components/bottomSheet.js?v=32"></script>
+    <script src="js/pages/studentsPage.js?v=33"></script>
+    <script src="js/pages/studentFormPage.js?v=33"></script>
+    <script src="js/pages/subjectSelectPage.js?v=32"></script>
+    <script src="js/pages/recordPage.js?v=37"></script>
+    <script src="js/pages/historyPage.js?v=36"></script>
+    <script src="js/pages/settingsPage.js?v=35"></script>
+    <!-- Transformers.js：本地AI语音识别（Whisper模型），按需加载 -->
+    <script type="module">
+        import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.1/dist/transformers.min.js')
+            .then(m => { window.transformers = m; console.log('[Transformers.js] 加载成功'); })
+            .catch(e => { console.warn('[Transformers.js] CDN加载失败，本地AI识别功能将不可用:', e); });
+    </script>
+    <script src="js/app.js?v=36"></script>
+    <script>
+        // 注册 Service Worker 实现离线缓存
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').then(() => {
+                console.log('[SW] Service Worker 注册成功');
+            }).catch((err) => {
+                console.warn('[SW] Service Worker 注册失败:', err);
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>课堂反馈助手 - 使用教程</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, sans-serif;
+            background: #F8FAFC;
+            color: #0F172A;
+            line-height: 1.8;
+            padding: 0;
+        }
+        .container {
+            max-width: 820px;
+            margin: 0 auto;
+            padding: 40px 24px 80px;
+        }
+        h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            text-align: center;
+            margin-bottom: 8px;
+            color: #6366F1;
+        }
+        .subtitle {
+            text-align: center;
+            color: #64748B;
+            font-size: 0.95rem;
+            margin-bottom: 40px;
+        }
+        h2 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: #0F172A;
+            margin: 36px 0 16px;
+            padding-left: 16px;
+            border-left: 4px solid #6366F1;
+        }
+        h3 {
+            font-size: 1.05rem;
+            font-weight: 600;
+            color: #334155;
+            margin: 20px 0 10px;
+        }
+        p {
+            margin-bottom: 12px;
+            color: #334155;
+            font-size: 0.95rem;
+        }
+        .step-list {
+            list-style: none;
+            padding: 0;
+            margin: 16px 0;
+        }
+        .step-list li {
+            position: relative;
+            padding: 14px 16px 14px 48px;
+            margin-bottom: 8px;
+            background: #FFFFFF;
+            border-radius: 12px;
+            border: 1px solid #E2E8F0;
+            font-size: 0.95rem;
+            color: #334155;
+        }
+        .step-list li::before {
+            content: attr(data-step);
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #6366F1;
+            color: white;
+            font-size: 0.8rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .tip-box {
+            background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+            border: 1px solid #FCD34D;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin: 16px 0;
+        }
+        .tip-box .tip-title {
+            font-weight: 700;
+            color: #92400E;
+            margin-bottom: 6px;
+            font-size: 0.95rem;
+        }
+        .tip-box p {
+            color: #B45309;
+            font-size: 0.9rem;
+            margin-bottom: 0;
+        }
+        .info-box {
+            background: #EFF6FF;
+            border: 1px solid #BFDBFE;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin: 16px 0;
+        }
+        .info-box .info-title {
+            font-weight: 700;
+            color: #1E40AF;
+            margin-bottom: 6px;
+            font-size: 0.95rem;
+        }
+        .info-box p {
+            color: #1D4ED8;
+            font-size: 0.9rem;
+            margin-bottom: 0;
+        }
+        .warn-box {
+            background: #FEF2F2;
+            border: 1px solid #FECACA;
+            border-radius: 12px;
+            padding: 16px 20px;
+            margin: 16px 0;
+        }
+        .warn-box .warn-title {
+            font-weight: 700;
+            color: #991B1B;
+            margin-bottom: 6px;
+            font-size: 0.95rem;
+        }
+        .warn-box p {
+            color: #DC2626;
+            font-size: 0.9rem;
+            margin-bottom: 0;
+        }
+        code {
+            background: #F1F5F9;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            color: #6366F1;
+            font-family: "SF Mono", "Fira Code", monospace;
+        }
+        a {
+            color: #6366F1;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+        .divider {
+            height: 1px;
+            background: #E2E8F0;
+            margin: 32px 0;
+        }
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #6366F1;
+            font-weight: 500;
+            font-size: 0.95rem;
+            margin-bottom: 24px;
+        }
+        .toc {
+            background: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-radius: 12px;
+            padding: 20px 24px;
+            margin-bottom: 32px;
+        }
+        .toc-title {
+            font-weight: 700;
+            color: #0F172A;
+            font-size: 1rem;
+            margin-bottom: 12px;
+        }
+        .toc ol {
+            padding-left: 20px;
+            color: #475569;
+            font-size: 0.9rem;
+        }
+        .toc ol li {
+            margin-bottom: 4px;
+        }
+        .toc a {
+            color: #6366F1;
+        }
+        @media print {
+            body { background: white; }
+            .container { padding: 20px; }
+            .tip-box, .info-box, .warn-box { break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="back-link">&larr; 返回课堂反馈助手</a>
+
+        <h1>课堂反馈助手 使用教程</h1>
+        <p class="subtitle">快速上手，轻松生成专业课堂反馈</p>
+
+        <div class="toc">
+            <div class="toc-title">目录</div>
+            <ol>
+                <li><a href="#open">推荐打开方式</a></li>
+                <li><a href="#speech">语音识别设置</a></li>
+                <li><a href="#long-record">长时间录音支持</a></li>
+                <li><a href="#macos">苹果电脑（macOS）使用说明</a></li>
+                <li><a href="#first-use">首次使用配置</a></li>
+                <li><a href="#daily">日常使用流程</a></li>
+                <li><a href="#group">小组课（一对多）</a></li>
+                <li><a href="#style">自定义反馈风格</a></li>
+                <li><a href="#modules">反馈模块管理</a></li>
+                <li><a href="#subject-template">科目专属模板</a></li>
+                <li><a href="#theme">界面主题</a></li>
+                <li><a href="#quick-reply">快捷回复与常用点评</a></li>
+                <li><a href="#history">历史反馈与科目筛选</a></li>
+                <li><a href="#summary">生成学习总结</a></li>
+                <li><a href="#draft">草稿自动保存</a></li>
+                <li><a href="#storage">存储空间监控</a></li>
+                <li><a href="#data">数据管理</a></li>
+                <li><a href="#faq">常见问题</a></li>
+            </ol>
+        </div>
+
+        <!-- 推荐打开方式 -->
+        <h2 id="open">推荐打开方式</h2>
+        <div class="info-box">
+            <div class="info-title">最佳使用体验</div>
+            <p>建议使用 <strong>Microsoft Edge 浏览器</strong>（Windows 和 macOS 均可）打开本网站，语音识别效果最佳，操作更方便，输入更高效。Chrome 浏览器也可以正常使用。手机端也可以正常使用。</p>
+        </div>
+        <div class="tip-box">
+            <div class="tip-title">如何添加到电脑桌面（推荐）</div>
+            <p>
+                <strong>Edge 浏览器（推荐）：</strong>打开网站后，点击地址栏右侧的"应用可用"图标（或菜单 → 应用 → 将此站点作为应用安装），选择"安装"<br>
+                <strong>Chrome 浏览器：</strong>打开网站后，点击地址栏右侧的安装图标（或菜单 → 投放、安装应用）<br>
+                安装后可以从桌面直接打开，像使用独立软件一样方便。
+            </p>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 语音识别 -->
+        <h2 id="speech">语音识别设置</h2>
+        <p>在设置页面的「语音识别设置」区域，可以选择语音转文字引擎：</p>
+        <ul class="step-list">
+            <li data-step="1"><strong>浏览器内置</strong>：免费，使用浏览器内置语音识别（推荐 Edge 浏览器），需要联网</li>
+            <li data-step="2"><strong>本地AI识别</strong>：基于 OpenAI Whisper 模型，完全离线运行，无需联网，隐私安全。首次使用需下载模型文件（约40MB）</li>
+        </ul>
+        <div class="info-box">
+            <div class="info-title">两种引擎对比</div>
+            <p>
+                <strong>浏览器内置</strong>：实时识别，速度快，需要联网（Edge / Chrome 效果最佳）<br>
+                <strong>本地AI识别</strong>：离线可用，隐私安全，首次需下载模型，识别速度取决于设备性能
+            </p>
+        </div>
+        <div class="tip-box">
+            <div class="tip-title">使用建议</div>
+            <p>
+                日常使用推荐「浏览器内置」，免费且速度快。<br>
+                如果网络不稳定或无法使用浏览器语音识别，可切换到「本地AI识别」。<br>
+                选择「本地AI识别」后，建议先在设置页面点击「预加载模型」提前下载，避免上课时等待。<br>
+                无论使用哪种引擎，都可以直接在文本框中手动输入课堂内容，效果完全一样。
+            </p>
+        </div>
+
+        <h3>录音文件导入（语音转文字）</h3>
+        <p>如果您已经用其他设备录好了课堂录音，可以使用录音文件导入功能将录音转为文字：</p>
+        <ol class="step-list">
+            <li data-step="1">在录音页面，点击「录音」按钮下方的「导入录音文件」链接</li>
+            <li data-step="2">选择您的录音文件（支持 mp3、wav、m4a、ogg、webm 等常见格式）</li>
+            <li data-step="3">系统会自动播放录音并通过语音识别引擎将内容转为文字</li>
+            <li data-step="4">转换完成后，文字会自动填入课堂内容文本框中</li>
+        </ol>
+        <div class="info-box">
+            <div class="info-title">录音导入说明</div>
+            <p>
+                使用「浏览器内置」引擎导入时，需要 Chrome 浏览器支持，转换速度约为录音时长的 1:1。<br>
+                使用「本地AI识别」引擎导入时，完全离线处理，速度取决于设备性能（通常比实时更快）。<br>
+                转换过程中可以正常使用其他功能，无需等待。
+            </p>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 长时间录音 -->
+        <h2 id="long-record">长时间录音支持</h2>
+        <p>系统已针对长时间课程进行了专门优化，支持 2 小时一对一课程和 40 分钟试听课的稳定录音转文字。</p>
+        <div class="info-box">
+            <div class="info-title">长时间录音保障机制</div>
+            <p>
+                <strong>自动重启：</strong>浏览器语音识别每隔约 20 秒会自动暂停，系统会在后台自动重启，全程无需手动操作。<br>
+                <strong>健康检查：</strong>每 30 秒检查一次识别状态，如果发现识别卡住会自动恢复。<br>
+                <strong>状态提示：</strong>录音过程中实时显示已录制时长和已识别字数。<br>
+                <strong>最大时长：</strong>单次录音最长支持约 2 小时（360 次自动重启），到达上限后会自动停止并提示。<br>
+                <strong>静音检测：</strong>如果 90 秒内没有检测到任何语音，会自动停止录音，避免浪费。
+            </p>
+        </div>
+        <div class="tip-box">
+            <div class="tip-title">使用建议</div>
+            <p>
+                上课时可以随时在文本框中补充或修改内容，录音转文字和手动输入可以混合使用。<br>
+                如果语音识别不可用，直接在文本框中输入课堂内容即可，效果完全一样。
+            </p>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- macOS 适配 -->
+        <h2 id="macos">苹果电脑（macOS）使用说明</h2>
+        <p>系统已针对 macOS 系统进行了适配优化，支持 Safari 和 Chrome 浏览器。</p>
+        <div class="info-box">
+            <div class="info-title">macOS 麦克风权限设置</div>
+            <p>
+                <strong>步骤一：</strong>打开「系统设置」→「隐私与安全性」→「麦克风」<br>
+                <strong>步骤二：</strong>确保您使用的浏览器（Chrome 或 Safari）已勾选<br>
+                <strong>步骤三：</strong>刷新网页后重试
+            </p>
+        </div>
+        <div class="info-box">
+            <div class="info-title">Safari 浏览器额外设置</div>
+            <p>
+                如果使用 Safari 浏览器，还需要：<br>
+                <strong>步骤一：</strong>Safari 菜单 → 偏好设置 → 网站 → 麦克风<br>
+                <strong>步骤二：</strong>找到本网站，将麦克风权限设为「允许」<br>
+                <strong>步骤三：</strong>确保 macOS 系统设置中也允许了 Safari 使用麦克风
+            </p>
+        </div>
+        <div class="tip-box">
+            <div class="tip-title">推荐使用 Edge</div>
+            <p>在 macOS 上，Edge 浏览器的语音识别兼容性更好，推荐优先使用 Edge。如果 Safari 遇到语音识别服务不可用的提示，请切换到 Edge 重试。Chrome 浏览器也可以正常使用。</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 首次使用 -->
+        <h2 id="first-use">首次使用配置</h2>
+        <p>首次打开网站后，需要完成以下三项基础配置：</p>
+        <ol class="step-list">
+            <li data-step="1">点击左侧菜单或底部导航栏的「设置」图标</li>
+            <li data-step="2">在「API Key」栏填入您的 DeepSeek API Key（获取方式见下方说明）</li>
+            <li data-step="3">在「科目管理」中添加您教授的科目（系统已预置语文、数学、英语、政治、历史、地理、物理、化学、生物 9 科，可按需增删）</li>
+            <li data-step="4">返回首页，点击右下角「+」按钮添加学生信息</li>
+        </ol>
+
+        <h3>如何获取 DeepSeek API Key</h3>
+        <ol class="step-list">
+            <li data-step="1">访问 <a href="https://platform.deepseek.com" target="_blank">platform.deepseek.com</a></li>
+            <li data-step="2">注册账号并登录（支持手机号注册）</li>
+            <li data-step="3">进入「API Keys」页面，点击「创建 API Key」</li>
+            <li data-step="4">复制生成的 Key（以 <code>sk-</code> 开头），粘贴到设置页面中</li>
+        </ol>
+        <div class="tip-box">
+            <div class="tip-title">费用说明</div>
+            <p>DeepSeek API 新用户有免费额度，后续费用约 ¥0.003/千字。单次 2 小时课程反馈约 ¥0.014，小组课（3人）约 ¥0.026。每月按每天 4 节课、22 天计算约 ¥1.65，充值 20 元可用半年以上。</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 日常使用流程 -->
+        <h2 id="daily">日常使用流程</h2>
+        <ol class="step-list">
+            <li data-step="1">在「学生管理」页面找到要上课的学生，点击学生卡片</li>
+            <li data-step="2">选择本次上课的科目</li>
+            <li data-step="3">进入录音页面，点击「开始录音」按钮，课堂计时器自动开始计时</li>
+            <li data-step="4">在文本框中输入本节课的课堂内容（如教学知识点、学生表现、作业安排等），也可使用快捷回复快速插入常用内容</li>
+            <li data-step="5">点击「生成反馈」按钮，AI 将自动生成结构化课堂反馈（生成过程中会显示进度提示）</li>
+            <li data-step="6">在弹出的反馈结果中，可以点击文字直接编辑修改</li>
+            <li data-step="7">确认无误后，点击「一键复制」即可粘贴发送给家长</li>
+        </ol>
+
+        <h3>课堂计时器</h3>
+        <p>录音页面顶部显示课堂时长计时器，录音开始时自动计时，停止录音时自动停止并记录时长。计时数据会保存在历史记录中，方便您追踪每节课的时长。</p>
+
+        <h3>科目快捷切换</h3>
+        <p>在录音页面，点击顶部的科目名称可以快速切换本次课程的科目，无需返回上一页重新选择。切换后不影响已输入的课堂内容。</p>
+
+        <div class="divider"></div>
+
+        <!-- 小组课 -->
+        <h2 id="group">小组课（一对多）</h2>
+        <p>支持 1 对 2 或 1 对 3 的小组课模式：</p>
+        <ol class="step-list">
+            <li data-step="1">在学生管理页面，点击「小组模式」按钮</li>
+            <li data-step="2">依次点选参与上课的学生（最多 3 人）</li>
+            <li data-step="3">点击底部出现的「确认选择」按钮</li>
+            <li data-step="4">选择科目后，后续流程与单人课相同</li>
+        </ol>
+
+        <h3>小组模式姓名插入</h3>
+        <p>在小组模式下，文本框上方会出现每位学生的姓名按钮（如「@小明」「@小红」）。点击按钮可在文本框中插入「@姓名：」标记，帮助 AI 区分不同学生的表现，生成更精准的个性化反馈。</p>
+        <div class="tip-box">
+            <div class="tip-title">使用建议</div>
+            <p>在记录课堂内容时，先点击姓名按钮插入标记，再输入该学生的表现。例如：「@小明：今天主动回答了3个问题，配方法掌握得很好」「@小红：二次函数图像理解有进步，但计算还需加强」。</p>
+        </div>
+        <div class="info-box">
+            <div class="info-title">小组模式反馈特点</div>
+            <p>小组模式下，AI 会为每位学生分别生成独立的反馈。「课堂内容」和「课后作业」模块为全组统一的公共内容（不出现学生姓名），「课堂表现」和「薄弱环节」等模块针对每位学生个性化生成。试听课学生的反馈标题会标注「试听」字样。</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 反馈风格 -->
+        <h2 id="style">自定义反馈风格</h2>
+        <p>在设置页面的「反馈风格」区域，您可以：</p>
+        <ul class="step-list">
+            <li data-step="A">选择 6 种语气风格：亲切友好、正式专业、简洁明了、详细具体、轻松幽默、积极鼓励</li>
+            <li data-step="B">设置每模块字数范围（最少/最多字数），默认为 50-150 字，课后作业默认 50-100 字</li>
+            <li data-step="C">开关「姓名截取」（三字名自动取后两字，如"王小明"→"小明"）</li>
+            <li data-step="D">开关「Emoji 表情」及位置（内容中/标题后/模块末尾）</li>
+            <li data-step="E">开关「请家长协助」内容</li>
+            <li data-step="F">开关「严格遵循输入内容」（防止 AI 编造未提及的内容）</li>
+            <li data-step="G">输入自定义要求（如"多使用鼓励性语言"等）</li>
+        </ul>
+        <div class="info-box">
+            <div class="info-title">字数设置说明</div>
+            <p>全局字数限制为后备值，每个模块可单独设置字数范围。手动修改过的模块字数不受全局调整影响。超长课程（如 2 小时）建议将字数上限调至 1000-2000 字。</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 反馈模块 -->
+        <h2 id="modules">反馈模块管理</h2>
+        <p>在设置页面的「反馈模块」区域，您可以自定义反馈的结构模块：</p>
+        <ul class="step-list">
+            <li data-step="1"><strong>启用/禁用模块</strong>：勾选或取消勾选模块前的复选框，控制生成反馈时包含哪些模块</li>
+            <li data-step="2"><strong>添加自定义模块</strong>：点击「+ 添加自定义模块」按钮，输入模块名称即可创建新的反馈模块，还可为自定义模块填写描述，帮助 AI 更精准地生成内容</li>
+            <li data-step="3"><strong>排序模块</strong>：通过模块右侧的「↑」「↓」按钮调整模块顺序，排序结果会影响生成反馈的模块排列顺序</li>
+        </ul>
+        <div class="info-box">
+            <div class="info-title">默认模块</div>
+            <p>系统默认包含「课堂内容」「课堂表现」「薄弱环节」「课后作业」等模块。您可以根据需要添加如「家长建议」「学习计划」等自定义模块。</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 科目专属模板 -->
+        <h2 id="subject-template">科目专属模板</h2>
+        <p>在设置页面的「科目专属反馈模板」区域，可以为每个科目设置专属的生成要求。</p>
+        <div class="info-box">
+            <div class="info-title">示例</div>
+            <p>数学科目可填写："强调解题思路和公式推导过程，注重计算准确性"<br>英语科目可填写："关注单词记忆、语法运用和口语表达"</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 主题切换 -->
+        <h2 id="theme">界面主题</h2>
+        <p>在设置页面的「界面主题」区域，可以选择 4 种主题风格：</p>
+        <ul class="step-list">
+            <li data-step="1"><strong>默认紫</strong>：经典紫色主题，专业稳重</li>
+            <li data-step="2"><strong>温暖橙</strong>：暖色调主题，亲切温馨</li>
+            <li data-step="3"><strong>清新绿</strong>：绿色调主题，自然舒适</li>
+            <li data-step="4"><strong>深色</strong>：深色背景主题，适合夜间使用，保护眼睛</li>
+        </ul>
+        <div class="tip-box">
+            <div class="tip-title">主题切换即时生效</div>
+            <p>选择主题后立即生效，无需刷新页面。主题偏好会自动保存，下次打开时自动应用。阴影和发光效果会跟随主题色变化。</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 快捷回复 -->
+        <h2 id="quick-reply">快捷回复与常用点评</h2>
+        <p>录音页面提供快捷回复功能，帮助您快速输入常用内容：</p>
+        <ul class="step-list">
+            <li data-step="1">在录音页面展开「快捷回复」区域，点击标签即可快速插入</li>
+            <li data-step="2">输入内容后，点击「保存为常用点评」可将当前内容保存</li>
+            <li data-step="3">每位学生有独立的常用点评库，方便复用</li>
+        </ul>
+
+        <h3>管理快捷回复</h3>
+        <p>在设置页面的「快捷回复管理」区域，您可以添加、编辑和删除快捷回复：</p>
+        <ul class="step-list">
+            <li data-step="1">点击「+ 添加快捷回复」按钮，在底部弹窗中输入内容并选择分类（表扬/建议/作业/自定义）</li>
+            <li data-step="2">快捷回复按分类显示，方便快速查找</li>
+            <li data-step="3">鼠标悬停在标签上时，右上角会显示红色「×」按钮，点击可删除（支持撤销恢复）</li>
+            <li data-step="4">可以添加多个分类，如「课堂表现」「作业相关」「鼓励用语」等</li>
+        </ul>
+
+        <div class="divider"></div>
+
+        <!-- 历史反馈 -->
+        <h2 id="history">历史反馈与科目筛选</h2>
+        <p>在学生的历史反馈页面，可以查看该学生所有过往的反馈记录：</p>
+        <ul class="step-list">
+            <li data-step="1">历史反馈按日期自动分组展示，今天的反馈显示为"今天"，昨天的显示为"昨天"，更早的显示具体日期</li>
+            <li data-step="2">每条反馈卡片左侧有科目颜色标识，方便快速识别不同科目</li>
+            <li data-step="3">点击顶部科目筛选按钮，可以按科目查看反馈记录，切换学生时筛选自动重置</li>
+            <li data-step="4">点击任意反馈卡片可查看完整内容，并支持复制</li>
+        </ul>
+
+        <div class="divider"></div>
+
+        <!-- 学习总结 -->
+        <h2 id="summary">生成学习总结</h2>
+        <p>在学生的历史反馈页面，点击「生成学习总结」按钮，AI 会根据该学生近期的反馈记录，自动生成一份包含整体情况、主要进步、需要加强和后续建议的学习总结报告。</p>
+        <div class="info-box">
+            <div class="info-title">总结范围</div>
+            <p>系统会取最近 20 次反馈记录中的前 15 次进行分析，自动生成结构化总结报告，帮助您和家长全面了解学生的学习轨迹。</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 草稿自动保存 -->
+        <h2 id="draft">草稿自动保存</h2>
+        <p>系统会自动保存您在录音页面输入的课堂内容草稿。如果您不小心关闭了页面或刷新了浏览器，再次打开时草稿会自动恢复。</p>
+        <div class="tip-box">
+            <div class="tip-title">草稿保存机制</div>
+            <p>每次输入内容时系统会自动保存草稿到本地。草稿与当前选中的学生和科目关联，切换学生或科目后会加载对应的草稿。生成反馈后草稿会自动清空。</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 存储空间监控 -->
+        <h2 id="storage">存储空间监控</h2>
+        <p>系统会实时监控本地存储空间使用情况。当存储空间使用超过 4MB（总容量约 5MB）时，会弹出橙色警告提示，建议您及时导出数据并清理旧记录。</p>
+        <div class="info-box">
+            <div class="info-title">存储说明</div>
+            <p>所有数据保存在浏览器本地（localStorage），不会上传到任何服务器。课堂时长记录最多保存 100 条，超出后自动覆盖最早的记录。</p>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 数据管理 -->
+        <h2 id="data">数据管理</h2>
+        <p>所有数据保存在浏览器本地，不会上传到任何服务器。</p>
+        <div class="warn-box">
+            <div class="warn-title">重要提醒</div>
+            <p>清除浏览器数据会导致所有记录丢失！建议定期使用设置页面中的「导出数据」功能进行备份。导出的数据已自动移除 API Key，可安全分享。</p>
+        </div>
+        <ul class="step-list">
+            <li data-step="1">「导出数据」：将所有学生、反馈、设置导出为 JSON 文件备份（自动移除 API Key）</li>
+            <li data-step="2">「导入数据」：从备份文件恢复数据（更换浏览器或电脑时使用）</li>
+            <li data-step="3">「清空所有数据」：删除所有本地数据（操作前有确认弹窗，并支持撤销恢复）</li>
+        </ul>
+
+        <div class="divider"></div>
+
+        <!-- 常见问题 -->
+        <h2 id="faq">常见问题</h2>
+
+        <h3>录音转文字无法使用？</h3>
+        <p>请检查：1）是否使用 Edge 浏览器（推荐）或 Chrome；2）麦克风权限是否已允许；3）macOS 用户还需检查系统设置中的语音识别权限。如果仍无法使用，直接在文本框中输入课堂内容即可。</p>
+
+        <h3>反馈生成失败？</h3>
+        <p>请检查：1）API Key 是否正确填写；2）网络是否正常；3）DeepSeek 账户余额是否充足。系统对网络错误会自动重试一次，如仍失败会提示具体错误信息。</p>
+
+        <h3>更换电脑后数据丢失？</h3>
+        <p>数据保存在浏览器本地，更换电脑或浏览器后需要重新导入。请提前使用「导出数据」备份。</p>
+
+        <h3>如何修改已生成的反馈？</h3>
+        <p>反馈弹出后，直接点击文字内容即可编辑修改，修改后会自动保存。修改完成后再点击「一键复制」即可。</p>
+
+        <h3>macOS 上语音识别不可用？</h3>
+        <p>请检查：1）系统设置 → 隐私与安全性 → 麦克风，确保浏览器已勾选；2）Safari 还需在偏好设置 → 网站中允许麦克风；3）推荐使用 Edge 浏览器，兼容性更好。Chrome 浏览器也可以正常使用。</p>
+
+        <h3>长时间录音中途断了怎么办？</h3>
+        <p>系统会自动重启语音识别，正常情况下无需手动操作。如果提示"已达到最大录音时长"，说明已录制约 2 小时，这是单次录音上限。您可以停止后重新开始新的录音。</p>
+
+        <h3>教程页面打不开或显示旧内容？</h3>
+        <p>这是浏览器或 Service Worker 缓存了旧版本导致的。请尝试：1）强制刷新页面（Ctrl+F5 或 Cmd+Shift+R）；2）清除浏览器缓存后重新访问。最新版本已修复此问题。</p>
+
+        <h3>复制反馈时提示"复制失败"？</h3>
+        <p>这通常是因为浏览器不支持剪贴板 API（如非 HTTPS 环境）。系统会自动降级到传统复制方式，如果仍失败，请手动选中文本复制。</p>
+
+        <div class="divider"></div>
+        <p style="text-align:center;color:#94A3B8;font-size:0.85rem;">课堂反馈助手 v1.7 · 纯前端应用，数据保存在本地</p>
+    </div>
+</body>
+</html>
