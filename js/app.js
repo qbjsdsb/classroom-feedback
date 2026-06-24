@@ -16,37 +16,24 @@ class App {
             'history': historyPage,
             'settings': settingsPage
         };
-        this.init();
+        // init() 改为异步，不在构造函数中直接调用
     }
 
-    init() {
+    async init() {
+        // 先初始化数据层，确保内存缓存已加载
+        await Storage.init();
+        await store.init();
         Storage.initTheme();
         this.initElements();
         this.bindEvents();
         this.checkFirstUse();
-        this.checkStorageQuota();
         this.checkBackupReminder();
         this.navigate('students');
     }
 
     checkStorageQuota() {
-        try {
-            let total = 0;
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                const val = localStorage.getItem(key);
-                total += (key.length + (val ? val.length : 0)) * 2;
-            }
-            // 超过80%（4MB/5MB）时告警
-            if (total > 4 * 1024 * 1024) {
-                const usedMB = (total / 1024 / 1024).toFixed(1);
-                setTimeout(() => {
-                    UI.showToast(`⚠️ 存储已用 ${usedMB}MB（上限5MB），建议导出备份`, 5000, 'warning');
-                }, 1000);
-            }
-        } catch (e) {
-            // 静默失败
-        }
+        // 数据已迁移到 IndexedDB，不再需要检查 localStorage 配额
+        // IndexedDB 存储上限远大于 localStorage（通常数百MB）
     }
 
     checkBackupReminder() {
@@ -653,3 +640,14 @@ class App {
 }
 
 window.app = new App();
+window.app.init().catch(err => {
+    console.error('[App] 初始化失败:', err);
+    // 即使初始化失败，也尝试渲染页面（使用降级数据）
+    try {
+        app.initElements();
+        app.bindEvents();
+        app.navigate('students');
+    } catch (e) {
+        document.body.innerHTML = '<div style="padding:40px;text-align:center;"><h2>应用加载失败</h2><p>请刷新页面重试，如问题持续请清除浏览器数据。</p></div>';
+    }
+});

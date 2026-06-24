@@ -140,8 +140,9 @@
     </div>
 
     <!-- Scripts -->
-    <script src="js/storage.js?v=34"></script>
-    <script src="js/models.js?v=36"></script>
+    <script src="js/db.js?v=1"></script>
+    <script src="js/storage.js?v=35"></script>
+    <script src="js/models.js?v=37"></script>
     <script src="js/recorder.js?v=44"></script>
     <script src="js/ai.js?v=36"></script>
     <script src="js/ui.js?v=36"></script>
@@ -158,7 +159,7 @@
             .then(m => { window.transformers = m; console.log('[Transformers.js] 加载成功'); })
             .catch(e => { console.warn('[Transformers.js] CDN加载失败，本地AI识别功能将不可用:', e); });
     </script>
-    <script src="js/app.js?v=36"></script>
+    <script src="js/app.js?v=37"></script>
     <script>
         // 注册 Service Worker 实现离线缓存
         if ('serviceWorker' in navigator) {

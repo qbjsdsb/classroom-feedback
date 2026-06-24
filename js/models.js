@@ -1,4 +1,4 @@
-// models.js - 数据模型与内存缓存
+// models.js - 数据模型与内存缓存（IndexedDB 后端）
 
 const DEFAULT_SUBJECTS = [
     { id: 'sub_chin', name: '语文', color: '#EF4444', order: 0 },
@@ -14,32 +14,96 @@ const DEFAULT_SUBJECTS = [
 
 class DataStore {
     constructor() {
-        this._students = null;
-        this._subjects = null;
-        this._studentSubjects = null;
-        this._init();
+        this._students = [];
+        this._subjects = [];
+        this._studentSubjects = {};
+        this._feedbackCache = {};
+        this._templatesCache = {};
+        this._subjectTemplatesCache = {};
+        this._quickRepliesCache = null;
+        // 不再在构造函数中调用 _init()，改为异步 init()
     }
 
-    _init() {
-        this._loadStudents();
-        this._loadSubjects();
-        this._loadStudentSubjects();
+    /**
+     * 异步初始化：从 IndexedDB 加载所有数据到内存缓存
+     */
+    async init() {
+        try {
+            // 加载学生
+            this._students = await DB.getAll('students');
+
+            // 加载科目
+            this._subjects = await DB.getAll('subjects');
+
+            // 加载学生-科目关联
+            const ssMappings = await DB.getAll('studentSubjects');
+            this._studentSubjects = {};
+            for (const m of ssMappings) {
+                this._studentSubjects[m.studentId] = m.subjectIds;
+            }
+
+            // 加载反馈历史
+            const allFeedback = await DB.getAll('feedback');
+            this._feedbackCache = {};
+            for (const f of allFeedback) {
+                this._feedbackCache[f.studentId] = f.history;
+            }
+
+            // 加载学生模板
+            const allTemplates = await DB.getAll('templates');
+            this._templatesCache = {};
+            for (const t of allTemplates) {
+                this._templatesCache[t.studentId] = t.templates;
+            }
+
+            // 加载科目模板
+            const allSubjectTemplates = await DB.getAll('subjectTemplates');
+            this._subjectTemplatesCache = {};
+            for (const st of allSubjectTemplates) {
+                this._subjectTemplatesCache[st.subjectId] = st.template;
+            }
+
+            // 加载快捷回复
+            const qrRecord = await DB.getRecord('quickReplies', 'main');
+            this._quickRepliesCache = qrRecord ? qrRecord.replies : null;
+        } catch (e) {
+            console.warn('[DataStore] 从 IndexedDB 加载数据失败，尝试 localStorage 降级:', e);
+            this._loadFallbackFromLocalStorage();
+        }
+
+        // 迁移：补充缺失的默认科目
+        this._migrateDefaultSubjects();
+    }
+
+    /**
+     * IndexedDB 不可用时的降级方案：从 localStorage 加载到缓存
+     */
+    _loadFallbackFromLocalStorage() {
+        // 学生
+        const studentsRaw = localStorage.getItem('cf_students');
+        try { this._students = studentsRaw ? JSON.parse(studentsRaw) : []; } catch { this._students = []; }
+
+        // 科目
+        const subjectsRaw = localStorage.getItem('cf_subjects');
+        try { this._subjects = subjectsRaw ? JSON.parse(subjectsRaw) : this._getDefaultSubjects(); } catch { this._subjects = this._getDefaultSubjects(); }
+
+        // 学生-科目关联
+        const ssRaw = localStorage.getItem('cf_student_subjects');
+        try { this._studentSubjects = ssRaw ? JSON.parse(ssRaw) : {}; } catch { this._studentSubjects = {}; }
+
+        // 反馈、模板、快捷回复在降级模式下仍从 localStorage 读取
+        this._feedbackCache = {};
+        this._templatesCache = {};
+        this._subjectTemplatesCache = {};
+        this._quickRepliesCache = null;
     }
 
     // === 学生 CRUD ===
 
-    _loadStudents() {
-        const raw = localStorage.getItem('cf_students');
-        try {
-            this._students = raw ? JSON.parse(raw) : [];
-        } catch {
-            this._students = [];
-        }
-        return this._students;
-    }
-
     _saveStudents() {
-        try { localStorage.setItem('cf_students', JSON.stringify(this._students)); } catch (e) {}
+        DB.putRecords('students', this._students).catch(e =>
+            console.warn('[DataStore] 保存学生失败:', e)
+        );
     }
 
     getStudents() {
@@ -96,8 +160,11 @@ class DataStore {
         this._students.splice(idx, 1);
         this._saveStudents();
         this.removeStudentSubjects(id);
-        localStorage.removeItem(`cf_feedback_${id}`);
-        localStorage.removeItem(`cf_templates_${id}`);
+        // 从缓存和 IndexedDB 中删除反馈和模板
+        delete this._feedbackCache[id];
+        delete this._templatesCache[id];
+        DB.deleteRecord('feedback', id).catch(e => {});
+        DB.deleteRecord('templates', id).catch(e => {});
         return true;
     }
 
@@ -110,16 +177,18 @@ class DataStore {
         if (idx === -1) return null;
         const student = { ...this._students[idx] };
         const subjects = this._studentSubjects[id] ? [...this._studentSubjects[id]] : [];
-        const feedbackRaw = localStorage.getItem(`cf_feedback_${id}`);
-        const templatesRaw = localStorage.getItem(`cf_templates_${id}`);
+        const feedback = this._feedbackCache[id] ? [...this._feedbackCache[id]] : null;
+        const templates = this._templatesCache[id] ? [...this._templatesCache[id]] : null;
         // 执行删除
         this._students.splice(idx, 1);
         this._saveStudents();
         this.removeStudentSubjects(id);
-        localStorage.removeItem(`cf_feedback_${id}`);
-        localStorage.removeItem(`cf_templates_${id}`);
+        delete this._feedbackCache[id];
+        delete this._templatesCache[id];
+        DB.deleteRecord('feedback', id).catch(e => {});
+        DB.deleteRecord('templates', id).catch(e => {});
         // 返回快照
-        return { student, subjects, feedbackRaw, templatesRaw };
+        return { student, subjects, feedback, templates };
     }
 
     /**
@@ -136,28 +205,18 @@ class DataStore {
             this._studentSubjects[snapshot.student.id] = snapshot.subjects;
             this._saveStudentSubjects();
         }
-        if (snapshot.feedbackRaw) {
-            try { localStorage.setItem(`cf_feedback_${snapshot.student.id}`, snapshot.feedbackRaw); } catch (e) {}
+        if (snapshot.feedback) {
+            this._feedbackCache[snapshot.student.id] = snapshot.feedback;
+            DB.putRecord('feedback', { studentId: snapshot.student.id, history: snapshot.feedback }).catch(e => {});
         }
-        if (snapshot.templatesRaw) {
-            try { localStorage.setItem(`cf_templates_${snapshot.student.id}`, snapshot.templatesRaw); } catch (e) {}
+        if (snapshot.templates) {
+            this._templatesCache[snapshot.student.id] = snapshot.templates;
+            DB.putRecord('templates', { studentId: snapshot.student.id, templates: snapshot.templates }).catch(e => {});
         }
         return true;
     }
 
     // === 科目管理 ===
-
-    _loadSubjects() {
-        const raw = localStorage.getItem('cf_subjects');
-        try {
-            this._subjects = raw ? JSON.parse(raw) : this._getDefaultSubjects();
-        } catch {
-            this._subjects = this._getDefaultSubjects();
-        }
-        // 迁移：补充缺失的默认科目（已有用户数据中可能缺少新增科目）
-        this._migrateDefaultSubjects();
-        return this._subjects;
-    }
 
     _getDefaultSubjects() {
         return JSON.parse(JSON.stringify(DEFAULT_SUBJECTS));
@@ -175,7 +234,9 @@ class DataStore {
     }
 
     _saveSubjects() {
-        try { localStorage.setItem('cf_subjects', JSON.stringify(this._subjects)); } catch (e) {}
+        DB.putRecords('subjects', this._subjects).catch(e =>
+            console.warn('[DataStore] 保存科目失败:', e)
+        );
     }
 
     getSubjects() {
@@ -222,18 +283,13 @@ class DataStore {
 
     // === 学生-科目关联 ===
 
-    _loadStudentSubjects() {
-        const raw = localStorage.getItem('cf_student_subjects');
-        try {
-            this._studentSubjects = raw ? JSON.parse(raw) : {};
-        } catch {
-            this._studentSubjects = {};
-        }
-        return this._studentSubjects;
-    }
-
     _saveStudentSubjects() {
-        try { localStorage.setItem('cf_student_subjects', JSON.stringify(this._studentSubjects)); } catch (e) {}
+        const records = Object.entries(this._studentSubjects).map(([studentId, subjectIds]) => ({
+            studentId, subjectIds
+        }));
+        DB.putRecords('studentSubjects', records).catch(e =>
+            console.warn('[DataStore] 保存学生科目关联失败:', e)
+        );
     }
 
     getStudentSubjects(studentId) {
@@ -254,90 +310,51 @@ class DataStore {
     // === 反馈历史 ===
 
     getFeedbackHistory(studentId, limit = 50) {
-        const raw = localStorage.getItem(`cf_feedback_${studentId}`);
-        let history = [];
-        try {
-            history = raw ? JSON.parse(raw) : [];
-        } catch {
-            history = [];
-        }
-        return history
+        const history = this._feedbackCache[studentId] || [];
+        return [...history]
             .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
             .slice(0, limit);
     }
 
     addFeedback(studentId, feedbackData) {
-        const raw = localStorage.getItem(`cf_feedback_${studentId}`);
-        let history = [];
-        try {
-            history = raw ? JSON.parse(raw) : [];
-        } catch {
-            history = [];
-        }
+        let history = this._feedbackCache[studentId] || [];
         history.push({
             ...feedbackData,
             id: `fb_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
             createdAt: new Date().toISOString()
         });
-        // 保留最近50条，超长文本课程可能需要更多历史记录
+        // 保留最近50条
         if (history.length > 50) history = history.slice(history.length - 50);
-        try { localStorage.setItem(`cf_feedback_${studentId}`, JSON.stringify(history)); } catch (e) {}
-        // 存储空间告警
-        this._checkStorageQuota();
+        this._feedbackCache[studentId] = history;
+        DB.putRecord('feedback', { studentId, history }).catch(e =>
+            console.warn('[DataStore] 保存反馈失败:', e)
+        );
         return history[history.length - 1];
-    }
-
-    // 检查 localStorage 存储空间
-    _checkStorageQuota() {
-        try {
-            let total = 0;
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                const val = localStorage.getItem(key);
-                total += (key.length + (val ? val.length : 0)) * 2; // UTF-16
-            }
-            // 超过 4MB 时告警（5MB限制留有余地）
-            if (total > 4 * 1024 * 1024) {
-                console.warn('[Storage] 存储空间使用量较大:', (total / 1024 / 1024).toFixed(1) + 'MB');
-                setTimeout(() => {
-                    UI.showToast('⚠️ 存储空间已使用超过4MB，建议导出备份后清空不需要的历史数据');
-                }, 500);
-            }
-        } catch(e) {
-            // 静默失败
-        }
     }
 
     /**
      * 更新反馈内容（编辑后持久化）
      */
     updateFeedback(studentId, feedbackId, updatedFeedback) {
-        const raw = localStorage.getItem(`cf_feedback_${studentId}`);
-        if (!raw) return false;
-        let history = [];
-        try {
-            history = JSON.parse(raw);
-        } catch {
-            return false;
-        }
+        const history = this._feedbackCache[studentId];
+        if (!history) return false;
         const item = history.find(f => f.id === feedbackId);
         if (!item) return false;
         item.feedback = updatedFeedback;
-        try { localStorage.setItem(`cf_feedback_${studentId}`, JSON.stringify(history)); } catch (e) {}
+        DB.putRecord('feedback', { studentId, history }).catch(e =>
+            console.warn('[DataStore] 更新反馈失败:', e)
+        );
         return true;
     }
 
     deleteFeedback(studentId, feedbackId) {
-        const raw = localStorage.getItem(`cf_feedback_${studentId}`);
-        if (!raw) return false;
-        let history = [];
-        try {
-            history = JSON.parse(raw);
-        } catch {
-            return false;
-        }
-        history = history.filter(f => f.id !== feedbackId);
-        try { localStorage.setItem(`cf_feedback_${studentId}`, JSON.stringify(history)); } catch (e) {}
+        const history = this._feedbackCache[studentId];
+        if (!history) return false;
+        const newHistory = history.filter(f => f.id !== feedbackId);
+        this._feedbackCache[studentId] = newHistory;
+        DB.putRecord('feedback', { studentId, history: newHistory }).catch(e =>
+            console.warn('[DataStore] 删除反馈失败:', e)
+        );
         return true;
     }
 
@@ -346,18 +363,13 @@ class DataStore {
      * @returns {Object|null} 被删除的反馈快照
      */
     softDeleteFeedback(studentId, feedbackId) {
-        const raw = localStorage.getItem(`cf_feedback_${studentId}`);
-        if (!raw) return null;
-        let history = [];
-        try {
-            history = JSON.parse(raw);
-        } catch {
-            return null;
-        }
+        const history = this._feedbackCache[studentId];
+        if (!history) return null;
         const feedback = history.find(f => f.id === feedbackId);
         if (!feedback) return null;
-        history = history.filter(f => f.id !== feedbackId);
-        try { localStorage.setItem(`cf_feedback_${studentId}`, JSON.stringify(history)); } catch (e) {}
+        const newHistory = history.filter(f => f.id !== feedbackId);
+        this._feedbackCache[studentId] = newHistory;
+        DB.putRecord('feedback', { studentId, history: newHistory }).catch(e => {});
         return { studentId, feedback };
     }
 
@@ -367,75 +379,73 @@ class DataStore {
      */
     restoreFeedback(snapshot) {
         if (!snapshot || !snapshot.studentId || !snapshot.feedback) return false;
-        const raw = localStorage.getItem(`cf_feedback_${snapshot.studentId}`);
-        let history = [];
-        try {
-            history = raw ? JSON.parse(raw) : [];
-        } catch {
-            history = [];
-        }
+        let history = this._feedbackCache[snapshot.studentId] || [];
         // 防止重复恢复：检查是否已存在同 ID 的反馈
         if (history.some(f => f.id === snapshot.feedback.id)) return false;
         history.unshift(snapshot.feedback);
-        try { localStorage.setItem(`cf_feedback_${snapshot.studentId}`, JSON.stringify(history)); } catch (e) {}
+        this._feedbackCache[snapshot.studentId] = history;
+        DB.putRecord('feedback', { studentId: snapshot.studentId, history }).catch(e => {});
         return true;
     }
 
     // === 学生常用点评模板 ===
+
     getStudentTemplates(studentId) {
-        const raw = localStorage.getItem(`cf_templates_${studentId}`);
-        try {
-            return raw ? JSON.parse(raw) : [];
-        } catch {
-            return [];
-        }
+        return this._templatesCache[studentId] ? [...this._templatesCache[studentId]] : [];
     }
 
     addStudentTemplate(studentId, content) {
-        const templates = this.getStudentTemplates(studentId);
+        const templates = this._templatesCache[studentId] || [];
         const template = {
             id: `tmpl_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
             content: content.trim(),
             createdAt: new Date().toISOString()
         };
         templates.push(template);
-        try { localStorage.setItem(`cf_templates_${studentId}`, JSON.stringify(templates)); } catch (e) {}
+        this._templatesCache[studentId] = templates;
+        DB.putRecord('templates', { studentId, templates }).catch(e =>
+            console.warn('[DataStore] 保存学生模板失败:', e)
+        );
         return template;
     }
 
     deleteStudentTemplate(studentId, templateId) {
-        let templates = this.getStudentTemplates(studentId);
+        let templates = this._templatesCache[studentId] || [];
         templates = templates.filter(t => t.id !== templateId);
-        try { localStorage.setItem(`cf_templates_${studentId}`, JSON.stringify(templates)); } catch (e) {}
+        this._templatesCache[studentId] = templates;
+        DB.putRecord('templates', { studentId, templates }).catch(e =>
+            console.warn('[DataStore] 删除学生模板失败:', e)
+        );
         return true;
     }
 
     // === 科目专属反馈模板 ===
+
     getSubjectTemplate(subjectId) {
-        const raw = localStorage.getItem(`cf_subject_template_${subjectId}`);
-        try {
-            return raw ? JSON.parse(raw) : null;
-        } catch {
-            return null;
-        }
+        return this._subjectTemplatesCache[subjectId] || null;
     }
 
     setSubjectTemplate(subjectId, template) {
-        try { localStorage.setItem(`cf_subject_template_${subjectId}`, JSON.stringify(template)); } catch (e) {}
+        this._subjectTemplatesCache[subjectId] = template;
+        DB.putRecord('subjectTemplates', { subjectId, template }).catch(e =>
+            console.warn('[DataStore] 保存科目模板失败:', e)
+        );
     }
 
     deleteSubjectTemplate(subjectId) {
-        localStorage.removeItem(`cf_subject_template_${subjectId}`);
+        delete this._subjectTemplatesCache[subjectId];
+        DB.deleteRecord('subjectTemplates', subjectId).catch(e =>
+            console.warn('[DataStore] 删除科目模板失败:', e)
+        );
     }
 
     // === 全局快捷回复库 ===
+
     getQuickReplies() {
-        const raw = localStorage.getItem('cf_quick_replies');
-        try {
-            return raw ? JSON.parse(raw) : this._getDefaultQuickReplies();
-        } catch {
-            return this._getDefaultQuickReplies();
+        if (this._quickRepliesCache !== null && this._quickRepliesCache !== undefined) {
+            return [...this._quickRepliesCache];
         }
+        return this._getDefaultQuickReplies();
     }
 
     _getDefaultQuickReplies() {
@@ -450,7 +460,10 @@ class DataStore {
     }
 
     saveQuickReplies(replies) {
-        try { localStorage.setItem('cf_quick_replies', JSON.stringify(replies)); } catch (e) {}
+        this._quickRepliesCache = replies;
+        DB.putRecord('quickReplies', { id: 'main', replies }).catch(e =>
+            console.warn('[DataStore] 保存快捷回复失败:', e)
+        );
     }
 
     addQuickReply(content, category) {
