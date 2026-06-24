@@ -699,18 +699,11 @@ class RecordPage {
                     const template = store.getPromptTemplateById(templateId);
                     if (!template) return;
 
-                    // 将模板 prompt 填入自定义要求
-                    const style = Storage.getStyle();
-                    style.customPrompt = template.prompt;
                     // 存储选中的模板 ID，用于 AI 调用时传入
+                    // （ai.js 会通过 promptTemplateId 读取模板 prompt 和 modules，
+                    //   无需写入 customPrompt 或覆盖 Storage 中的 modules，避免重复和破坏用户配置）
                     this._selectedPromptTemplateId = templateId;
 
-                    // 如果模板有自定义 modules，使用模板的 modules
-                    if (template.modules && Array.isArray(template.modules)) {
-                        Storage.saveModules(template.modules);
-                    }
-
-                    Storage.saveStyle(style);
                     UI.closeBottomSheet();
                     UI.showToast(`已应用模板「${template.name}」`);
                 });
@@ -766,7 +759,13 @@ class RecordPage {
         const group = app.currentGroup;
         const subjectName = subject?.name || '';
         const moduleNames = modules.map(m => m.name);
-        const style = Storage.getStyle();
+        let style = Storage.getStyle();
+
+        // 如果选中了模板，临时屏蔽 customPrompt 避免与模板 prompt 重复
+        // （不修改 Storage 中的值，生成后 customPrompt 仍然保留）
+        if (this._selectedPromptTemplateId) {
+            style = { ...style, customPrompt: '' };
+        }
 
         UI.showLoading('正在分析课堂内容...');
 
@@ -849,6 +848,8 @@ class RecordPage {
         } finally {
             clearInterval(progressTimer);
             UI.hideLoading();
+            // 清除本次使用的模板ID，避免下次生成时无意识地继续使用
+            this._selectedPromptTemplateId = null;
             // 恢复生成按钮
             const genBtn = document.getElementById('btn-generate');
             if (genBtn) {

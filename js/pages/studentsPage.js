@@ -1,8 +1,6 @@
 // studentsPage.js - 学生列表页
 
 class StudentsPage {
-    static MAX_GROUP_SIZE = 3;
-
     constructor() {
         this.container = document.getElementById('students-page');
         this.searchQuery = '';
@@ -192,11 +190,8 @@ class StudentsPage {
         if (this.isGroupMode) {
             if (this.selectedStudentIds.has(studentId)) {
                 this.selectedStudentIds.delete(studentId);
-            } else if (this.selectedStudentIds.size < StudentsPage.MAX_GROUP_SIZE) {
-                this.selectedStudentIds.add(studentId);
             } else {
-                UI.showToast(`小组最多选择 ${StudentsPage.MAX_GROUP_SIZE} 人`);
-                return;
+                this.selectedStudentIds.add(studentId);
             }
             // 仅切换选中态和更新底部栏，不重建全部DOM
             this._toggleGroupSelection(studentId);

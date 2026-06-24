@@ -1244,6 +1244,12 @@ class SettingsPage {
         // 导出快捷回复
         data.quickReplies = store.getQuickReplies();
 
+        // 导出 Prompt 模板库
+        const promptTemplates = store.getPromptTemplates();
+        if (promptTemplates.length > 0) {
+            data.promptTemplates = promptTemplates;
+        }
+
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -1327,6 +1333,14 @@ class SettingsPage {
                         localStorage.setItem('cf_quick_replies', JSON.stringify(data.quickReplies));
                     } catch (storageErr) {
                         console.warn('导入快捷回复失败:', storageErr);
+                    }
+                }
+                // 导入 Prompt 模板库（非默认模板）
+                if (data.promptTemplates && Array.isArray(data.promptTemplates)) {
+                    try {
+                        localStorage.setItem('cf_prompt_templates', JSON.stringify(data.promptTemplates));
+                    } catch (storageErr) {
+                        console.warn('导入 Prompt 模板失败:', storageErr);
                     }
                 }
 

@@ -13,7 +13,7 @@ class DB {
 
     // 需要迁移到 IndexedDB 的集合键名
     static COLLECTION_KEYS = [
-        'cf_students', 'cf_subjects', 'cf_student_subjects', 'cf_quick_replies'
+        'cf_students', 'cf_subjects', 'cf_student_subjects', 'cf_quick_replies', 'cf_prompt_templates'
     ];
 
     // 需要迁移到 IndexedDB 的键前缀
@@ -339,6 +339,15 @@ class DB {
                 }
             }
 
+            // 9. Prompt 模板库
+            const ptRaw = localStorage.getItem('cf_prompt_templates');
+            if (ptRaw) {
+                const templates = this._parseLSValue(ptRaw);
+                if (Array.isArray(templates)) {
+                    await this.putRecords('promptTemplates', templates);
+                }
+            }
+
             // 标记迁移完成
             await this.set('cf_migrated', true);
 
@@ -450,6 +459,15 @@ class DB {
                 const replies = this._parseLSValue(qrRaw);
                 if (Array.isArray(replies)) {
                     await this.putRecord('quickReplies', { id: 'main', replies });
+                }
+            }
+
+            // Prompt 模板库
+            const ptRaw = localStorage.getItem('cf_prompt_templates');
+            if (ptRaw) {
+                const templates = this._parseLSValue(ptRaw);
+                if (Array.isArray(templates)) {
+                    await this.putRecords('promptTemplates', templates);
                 }
             }
 

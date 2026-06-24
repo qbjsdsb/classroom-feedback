@@ -216,13 +216,14 @@
                 <li><a href="#group">小组课（一对多）</a></li>
                 <li><a href="#style">自定义反馈风格</a></li>
                 <li><a href="#modules">反馈模块管理</a></li>
-                <li><a href="#subject-template">科目专属模板</a></li>
+                <li><a href="#prompt-template">Prompt 模板库</a></li>
+                <li><a href="#subject-template">科目专属设置</a></li>
                 <li><a href="#theme">界面主题</a></li>
                 <li><a href="#quick-reply">快捷回复与常用点评</a></li>
                 <li><a href="#history">历史反馈与科目筛选</a></li>
                 <li><a href="#summary">生成学习总结</a></li>
                 <li><a href="#draft">草稿自动保存</a></li>
-                <li><a href="#storage">存储空间监控</a></li>
+                <li><a href="#storage">存储说明</a></li>
                 <li><a href="#data">数据管理</a></li>
                 <li><a href="#faq">常见问题</a></li>
             </ol>
@@ -357,7 +358,7 @@
         </ol>
         <div class="tip-box">
             <div class="tip-title">费用说明</div>
-            <p>DeepSeek API 新用户有免费额度，后续费用约 ¥0.003/千字。单次 2 小时课程反馈约 ¥0.014，小组课（3人）约 ¥0.026。每月按每天 4 节课、22 天计算约 ¥1.65，充值 20 元可用半年以上。</p>
+            <p>DeepSeek API 新用户有免费额度，后续费用约 ¥0.003/千字。单次 2 小时课程反馈约 ¥0.014，小组课费用随人数增加。每月按每天 4 节课、22 天计算约 ¥1.65，充值 20 元可用半年以上。</p>
         </div>
 
         <div class="divider"></div>
@@ -368,10 +369,11 @@
             <li data-step="1">在「学生管理」页面找到要上课的学生，点击学生卡片</li>
             <li data-step="2">选择本次上课的科目</li>
             <li data-step="3">进入录音页面，点击「开始录音」按钮，课堂计时器自动开始计时</li>
-            <li data-step="4">在文本框中输入本节课的课堂内容（如教学知识点、学生表现、作业安排等），也可使用快捷回复快速插入常用内容</li>
-            <li data-step="5">点击「生成反馈」按钮，AI 将自动生成结构化课堂反馈（生成过程中会显示进度提示）</li>
-            <li data-step="6">在弹出的反馈结果中，可以点击文字直接编辑修改</li>
-            <li data-step="7">确认无误后，点击「一键复制」即可粘贴发送给家长</li>
+            <li data-step="4">如需使用 Prompt 模板，点击「选择模板」按钮选择合适的模板</li>
+            <li data-step="5">在文本框中输入本节课的课堂内容（如教学知识点、学生表现、作业安排等），也可使用快捷回复快速插入常用内容</li>
+            <li data-step="6">点击「生成反馈」按钮，AI 将自动生成结构化课堂反馈（生成过程中会显示进度提示）</li>
+            <li data-step="7">在弹出的反馈结果中，可以点击文字直接编辑修改</li>
+            <li data-step="8">确认无误后，点击「一键复制」即可粘贴发送给家长</li>
         </ol>
 
         <h3>课堂计时器</h3>
@@ -384,10 +386,10 @@
 
         <!-- 小组课 -->
         <h2 id="group">小组课（一对多）</h2>
-        <p>支持 1 对 2 或 1 对 3 的小组课模式：</p>
+        <p>支持一对多小组课模式，选择人数不限：</p>
         <ol class="step-list">
             <li data-step="1">在学生管理页面，点击「小组模式」按钮</li>
-            <li data-step="2">依次点选参与上课的学生（最多 3 人）</li>
+            <li data-step="2">依次点选参与上课的学生（人数不限）</li>
             <li data-step="3">点击底部出现的「确认选择」按钮</li>
             <li data-step="4">选择科目后，后续流程与单人课相同</li>
         </ol>
@@ -410,16 +412,16 @@
         <p>在设置页面的「反馈风格」区域，您可以：</p>
         <ul class="step-list">
             <li data-step="A">选择 6 种语气风格：亲切友好、正式专业、简洁明了、详细具体、轻松幽默、积极鼓励</li>
-            <li data-step="B">设置每模块字数范围（最少/最多字数），默认为 50-150 字，课后作业默认 50-100 字</li>
+            <li data-step="B">开关「允许分点输出」「使用 Emoji 表情」及位置（融入内容/标题后/模块末尾）</li>
             <li data-step="C">开关「姓名截取」（三字名自动取后两字，如"王小明"→"小明"）</li>
-            <li data-step="D">开关「Emoji 表情」及位置（内容中/标题后/模块末尾）</li>
-            <li data-step="E">开关「请家长协助」内容</li>
-            <li data-step="F">开关「严格遵循输入内容」（防止 AI 编造未提及的内容）</li>
-            <li data-step="G">输入自定义要求（如"多使用鼓励性语言"等）</li>
+            <li data-step="D">开关「严格遵循输入内容」（防止 AI 编造未提及的内容）</li>
+            <li data-step="E">开关「包含"请家长协助"内容」</li>
+            <li data-step="F">开关「使用自定义日期」</li>
+            <li data-step="G">设置每模块字数范围（最少/最多字数），默认为 50-150 字，课后作业默认 50-100 字</li>
         </ul>
         <div class="info-box">
             <div class="info-title">字数设置说明</div>
-            <p>全局字数限制为后备值，每个模块可单独设置字数范围。手动修改过的模块字数不受全局调整影响。超长课程（如 2 小时）建议将字数上限调至 1000-2000 字。</p>
+            <p>每个模块可单独设置字数范围。超长课程（如 2 小时）建议将字数上限调至 1000-2000 字。</p>
         </div>
 
         <div class="divider"></div>
@@ -439,9 +441,30 @@
 
         <div class="divider"></div>
 
-        <!-- 科目专属模板 -->
-        <h2 id="subject-template">科目专属模板</h2>
-        <p>在设置页面的「科目专属反馈模板」区域，可以为每个科目设置专属的生成要求。</p>
+        <!-- Prompt 模板库 -->
+        <h2 id="prompt-template">Prompt 模板库</h2>
+        <p>在设置页面的「Prompt 模板库」区域，可以创建和管理可复用的反馈生成模板：</p>
+        <ul class="step-list">
+            <li data-step="1"><strong>预置模板</strong>：系统自带 4 个预置模板——问题导向型、家长沟通型、数学学科、英语学科，开箱即用</li>
+            <li data-step="2"><strong>新建模板</strong>：点击「+ 新建模板」，填写名称、描述、分类和 Prompt 内容，还可指定模板使用的反馈模块</li>
+            <li data-step="3"><strong>应用模板</strong>：在录音页面点击「选择模板」按钮，从弹窗中点选模板即可应用，生成反馈时自动使用模板的 Prompt 和模块设置</li>
+            <li data-step="4"><strong>临时备注</strong>：在模板库区域的「临时备注」输入框中填写一次性要求（如"本次课特别强调计算准确性"），每次生成反馈时都会追加</li>
+            <li data-step="5"><strong>科目专属设置</strong>：在模板库区域的「科目专属设置」中，可以为每个科目单独设置专属 Prompt 和默认模板</li>
+        </ul>
+        <div class="info-box">
+            <div class="info-title">模板与临时备注的关系</div>
+            <p>
+                选择模板后，模板的 Prompt 会替代临时备注生效（不会修改您保存的临时备注内容）。<br>
+                生成反馈后，模板选择自动清除，下次生成时使用临时备注。<br>
+                模板的模块设置仅在生成反馈时临时使用，不会覆盖您保存的模块配置。
+            </p>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 科目专属设置 -->
+        <h2 id="subject-template">科目专属设置</h2>
+        <p>在设置页面的「Prompt 模板库」区域底部，可以为每个科目设置专属的生成要求和默认模板：</p>
         <div class="info-box">
             <div class="info-title">示例</div>
             <p>数学科目可填写："强调解题思路和公式推导过程，注重计算准确性"<br>英语科目可填写："关注单词记忆、语法运用和口语表达"</p>
@@ -518,11 +541,11 @@
         <div class="divider"></div>
 
         <!-- 存储空间监控 -->
-        <h2 id="storage">存储空间监控</h2>
-        <p>系统会实时监控本地存储空间使用情况。当存储空间使用超过 4MB（总容量约 5MB）时，会弹出橙色警告提示，建议您及时导出数据并清理旧记录。</p>
+        <h2 id="storage">存储说明</h2>
+        <p>系统使用 IndexedDB 存储数据，相比传统 localStorage 拥有更大的存储容量和更稳定的性能。首次打开时，系统会自动将旧版 localStorage 数据迁移到 IndexedDB，无需手动操作。</p>
         <div class="info-box">
             <div class="info-title">存储说明</div>
-            <p>所有数据保存在浏览器本地（localStorage），不会上传到任何服务器。课堂时长记录最多保存 100 条，超出后自动覆盖最早的记录。</p>
+            <p>所有数据保存在浏览器本地（IndexedDB），不会上传到任何服务器。课堂时长记录最多保存 100 条，超出后自动覆盖最早的记录。导入备份数据时，系统会自动同步到 IndexedDB。</p>
         </div>
 
         <div class="divider"></div>
@@ -570,7 +593,7 @@
         <p>这通常是因为浏览器不支持剪贴板 API（如非 HTTPS 环境）。系统会自动降级到传统复制方式，如果仍失败，请手动选中文本复制。</p>
 
         <div class="divider"></div>
-        <p style="text-align:center;color:#94A3B8;font-size:0.85rem;">课堂反馈助手 v1.7 · 纯前端应用，数据保存在本地</p>
+        <p style="text-align:center;color:#94A3B8;font-size:0.85rem;">课堂反馈助手 v1.9 · 纯前端应用，数据保存在本地</p>
     </div>
 </body>
 </html>
