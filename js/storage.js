@@ -235,7 +235,7 @@ class Storage {
         this._updateThemeColor(theme);
     }
 
-    static reset() {
+    static async reset() {
         // 清空内存缓存
         this._cache = {};
 
@@ -251,12 +251,15 @@ class Storage {
             store._promptTemplatesCache = [];
         }
 
-        // 清空所有 IndexedDB stores
+        // 清空所有 IndexedDB stores（await 完成，避免 reload 前事务未提交导致数据残留）
         const storeNames = ['keyvalue', 'students', 'subjects', 'studentSubjects',
             'feedback', 'templates', 'subjectTemplates', 'quickReplies', 'promptTemplates'];
-        for (const name of storeNames) {
-            DB.clearStore(name).catch(e => console.warn(`[Storage] 清空 ${name} 失败:`, e));
-        }
+        const results = await Promise.allSettled(
+            storeNames.map(name => DB.clearStore(name))
+        );
+        results.forEach((r, i) => {
+            if (r.status === 'rejected') console.warn(`[Storage] 清空 ${storeNames[i]} 失败:`, r.reason);
+        });
 
         // 清除 localStorage 中所有 cf_ 键
         const keysToRemove = [];

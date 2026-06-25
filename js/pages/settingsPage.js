@@ -989,9 +989,14 @@ class SettingsPage {
         document.getElementById('import-file')?.addEventListener('change', (e) => this.importData(e));
 
         document.getElementById('btn-clear-all')?.addEventListener('click', () => {
-            UI.showConfirmInput('确定清空所有数据？此操作不可恢复！', '删除', () => {
-                Storage.reset();
-                location.reload();
+            UI.showConfirmInput('确定清空所有数据？此操作不可恢复！', '删除', async () => {
+                try {
+                    await Storage.reset();
+                    location.reload();
+                } catch (e) {
+                    console.error('[Settings] 清空数据失败:', e);
+                    UI.showToast('清空数据失败，请重试或检查浏览器存储权限');
+                }
             });
         });
 
@@ -1357,6 +1362,8 @@ class SettingsPage {
                 }
 
                 UI.showToast('数据已导入，页面即将刷新');
+                // 设置导入标志，触发 db.js _checkReMigration 执行覆盖式迁移
+                localStorage.setItem('cf_pending_import', 'true');
                 setTimeout(() => location.reload(), 1500);
             } catch (err) {
                 UI.showToast('导入失败：' + (err.message || '未知错误'));

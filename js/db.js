@@ -348,8 +348,9 @@ class DB {
                 }
             }
 
-            // 标记迁移完成
+            // 标记迁移完成，并清除失败计数
             await this.set('cf_migrated', true);
+            await this.remove('cf_migration_attempts');
 
             // 清除已迁移的 localStorage 键
             for (const key of cfKeys) {
@@ -359,8 +360,16 @@ class DB {
             console.log(`[DB] 迁移完成，已清除 ${cfKeys.length} 个 localStorage 键`);
         } catch (e) {
             console.error('[DB] 迁移失败:', e);
-            // 迁移失败时仍标记，避免反复尝试
-            await this.set('cf_migrated', true);
+            // 迁移失败时不标记 cf_migrated，下次启动可重试
+            // 用 attempts 计数避免无限重试；超过 3 次后停止并保留 localStorage 数据供用户导出
+            const attempts = (await this.get('cf_migration_attempts') || 0) + 1;
+            await this.set('cf_migration_attempts', attempts);
+            if (attempts >= 3) {
+                await this.set('cf_migrated', true);
+                console.error(`[DB] 迁移已失败 ${attempts} 次，停止自动重试。localStorage 数据已保留，请导出后排查问题。`);
+            } else {
+                console.warn(`[DB] 迁移失败（第 ${attempts} 次），下次启动将重试`);
+            }
         }
     }
 
@@ -372,7 +381,18 @@ class DB {
         const cfKeys = this._collectCFKeys();
         if (cfKeys.length === 0) return;
 
-        console.log(`[DB] 检测到 ${cfKeys.length} 个 localStorage 键需要重新迁移`);
+        // 仅在显式导入标志触发时执行覆盖式迁移
+        // 否则只清理孤儿 localStorage 键，避免用旧数据覆盖 IDB 最新数据
+        const pendingImport = localStorage.getItem('cf_pending_import') === 'true';
+        if (!pendingImport) {
+            console.warn(`[DB] 检测到 ${cfKeys.length} 个孤儿 localStorage 键（非导入触发），仅清理不覆盖`);
+            for (const key of cfKeys) {
+                localStorage.removeItem(key);
+            }
+            return;
+        }
+
+        console.log(`[DB] 检测到导入触发，开始将 ${cfKeys.length} 个 localStorage 键同步到 IndexedDB`);
 
         try {
             // 简单 key-value 对
@@ -476,9 +496,14 @@ class DB {
                 localStorage.removeItem(key);
             }
 
+            // 清除导入标志
+            localStorage.removeItem('cf_pending_import');
+
             console.log(`[DB] 重新迁移完成，已清除 ${cfKeys.length} 个 localStorage 键`);
         } catch (e) {
             console.error('[DB] 重新迁移失败:', e);
+            // 保留导入标志，下次启动重试；提示用户如反复失败需手动排查
+            console.warn('[DB] 导入标志已保留，下次启动将重试。如反复失败请检查 IndexedDB 配额或权限。');
         }
     }
 }
