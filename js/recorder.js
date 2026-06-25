@@ -15,6 +15,8 @@ class Recorder {
         this.interimTranscript = '';
         this.lastFinalCount = 0; // 上次 onresult 时的 final result 数量，用于检测新增
         this._lastProcessedResultIdx = -1; // 已处理的最大 final results 索引（去重保护，-1 表示无）
+        this._lastCommittedInterim = ''; // 上次 onend/重启时已提交的 interim 文本（跨实例去重）
+        this._dedupPending = false; // 是否有待去重的 final（重启后首个 final 需检查是否与已提交 interim 重复）
         this.sessionStartTime = null;
         this.timerInterval = null;
         this.permissionChecked = false;
@@ -257,6 +259,9 @@ class Recorder {
             this.lastResultTime = Date.now(); // 重置时间，给新实例30秒干净窗口
             this._autoCommitted = false; // 重置自动commit标志，新实例可以再次触发
             this._lastProcessedResultIdx = -1; // 重置去重锚点，新实例的 results 从空开始
+            // 如果上次 onend/重启时提交了 interim，标记新实例首个 final 需要去重
+            // 新实例可能重新识别到相同内容，需从首个 final 中去除重复部分
+            this._dedupPending = !!this._lastCommittedInterim;
             if (!this.sessionStartTime) this.sessionStartTime = Date.now();
             this._log('info', '识别实例启动');
             UI.updateRecordButton(true);
@@ -292,10 +297,9 @@ class Recorder {
                 return;
             }
 
-            // onend 自动重启时只提交 final，不提交 interim
-            // 手机端 Chrome 会频繁触发 onend（网络波动、段间停顿等），新实例会重新识别
-            // 麦克风缓冲区残留的语音，若提交 interim 会导致同一段话被重复写入
-            this.commitTranscript(false);
+            // onend 自动重启时提交 final 和 interim，避免丢失用户最后说的话
+            // 重复问题通过 onresult 去重逻辑 + 重启时清空旧实例状态来解决
+            this.commitTranscript();
             if (!this.shouldRestart) {
                 UI.updateRecordButton(false);
             }
@@ -389,6 +393,34 @@ class Recorder {
             // 需要清空 interimTranscript，避免显示过时的临时文本
             if (!hasInterim) {
                 this.interimTranscript = '';
+            }
+
+            // 跨实例去重：重启后首个 final 可能包含上次 onend 已提交的 interim 内容
+            // 场景：手机端 Chrome onend 触发时提交了 interim，重启后新实例重新识别
+            // 到同一段语音并输出 final，导致内容重复。此处去除重复部分。
+            if (this._dedupPending && newFinal && this._lastCommittedInterim) {
+                const committed = this._lastCommittedInterim;
+                // 情况1：新 final 以已提交的 interim 开头（重新识别包含完整旧内容）
+                // 去除前缀，只保留新内容
+                if (newFinal.startsWith(committed)) {
+                    newFinal = newFinal.substring(committed.length);
+                    this._log('info', '跨实例去重:去除重复前缀', `committed=${committed.length}字`);
+                }
+                // 情况2：已提交的 interim 以新 final 开头（interim 比最终识别更完整）
+                // 跳过整个 final，避免重复
+                else if (committed.startsWith(newFinal)) {
+                    newFinal = '';
+                    this._log('info', '跨实例去重:跳过重复final', `final被interim包含`);
+                }
+                // 情况3：两者不完全匹配，保留 final（可能是用户继续说的新内容）
+                // 去重只针对首字精确匹配的情况，避免误删合法内容
+                this._dedupPending = false;
+                this._lastCommittedInterim = '';
+            } else if (this._dedupPending) {
+                // 没有新 final（只有 interim 或无结果），清除去重状态
+                // 避免 _lastCommittedInterim 长期残留影响后续逻辑
+                this._dedupPending = false;
+                this._lastCommittedInterim = '';
             }
 
             // 增量追加新的 final 文本
@@ -500,8 +532,8 @@ class Recorder {
                     this._log('warn', '健康检查连续3次失败，强制重建实例');
                     // 先设置 shouldRestart = false，防止 abort() 触发的 onend 重复重启
                     this.shouldRestart = false;
-                    // 只提交 final，不提交 interim（自动重启场景，避免重复）
-                    this.commitTranscript(false);
+                    // 提交 final 和 interim，避免丢失用户最后说的话
+                    this.commitTranscript();
                     // 先 abort 旧实例，确保完全停止
                     try { this.recognition.abort(); } catch (e) {}
                     this._cleanupRecognition(this.recognition); // 打破闭包循环引用
@@ -569,7 +601,7 @@ class Recorder {
             if (!this.isRecording && this._userIntendsToRecord) {
                 this._log('warn', 'onstart超时(5秒)，重建实例');
                 this.shouldRestart = false;
-                this.commitTranscript(false);
+                this.commitTranscript();
                 try { this.recognition.abort(); } catch (e) {}
                 this._cleanupRecognition(this.recognition);
                 this.isRecording = false;
@@ -610,8 +642,8 @@ class Recorder {
                 if (backgroundDuration > 30000 && this._userIntendsToRecord) {
                     this._log('warn', '页面后台超过30秒，重建实例', `bg=${Math.round(backgroundDuration/1000)}s`);
                     this.shouldRestart = false; // 防止 abort 触发的 onend 重复调度
-                    // 只提交 final，不提交 interim（自动重启场景，避免重复）
-                    this.commitTranscript(false);
+                    // 提交 final 和 interim，避免丢失用户最后说的话
+                    this.commitTranscript();
                     try { this.recognition.abort(); } catch (e) {}
                     this._cleanupRecognition(this.recognition); // 打破闭包循环引用
                     this.isRecording = false;
@@ -652,10 +684,8 @@ class Recorder {
             // 先确保旧实例完全停止，避免 "already started" 错误
             // 设置 shouldRestart = false 防止 abort() 触发的 onend 重复调度
             this.shouldRestart = false;
-            // 只提交 final，不提交 interim
-            // 手机端重启后新实例会重新识别，提交 interim 会导致同一段话重复
-            // abort() 会丢弃 interim，但这是可接受的（避免重复比避免丢失更重要）
-            this.commitTranscript(false);
+            // 提交 final 和 interim，避免丢失用户最后说的话
+            this.commitTranscript();
             try { this.recognition.abort(); } catch (e) {}
             this._cleanupRecognition(this.recognition); // 打破闭包循环引用
             // Safari 的 abort() 可能不触发 onend，手动更新状态
@@ -878,6 +908,9 @@ class Recorder {
         // 注意：仅在手动停止（pause/stop）时提交 interim
         // onend 自动重启时不应提交 interim（新实例会重新识别同一段语音，导致重复）
         if (includeInterim && this.interimTranscript) {
+            // 记录已提交的 interim，用于重启后跨实例去重
+            // 新实例可能重新识别到相同内容，需从首个 final 中去除重复部分
+            this._lastCommittedInterim = this.interimTranscript;
             this.accumulatedText += this.interimTranscript;
             this.interimTranscript = '';
         }
@@ -987,6 +1020,8 @@ class Recorder {
                 this.currentDelay = this.restartDelay;
                 this.lastFinalCount = 0;
                 this._lastProcessedResultIdx = -1; // 全新录音会话，重置去重锚点
+                this._lastCommittedInterim = ''; // 全新录音会话，清空跨实例去重状态
+                this._dedupPending = false;
                 this.lastResultTime = Date.now();
                 this.shouldRestart = true;
                 this._userIntendsToRecord = true; // 标记用户意图录音
@@ -1291,6 +1326,13 @@ class Recorder {
                 window.transformers.env.remoteHost = 'https://hf-mirror.com';
                 // 允许从镜像下载模型，不使用本地缓存路径的默认行为
                 window.transformers.env.allowLocalModels = false;
+            }
+            // 配置 ONNX Runtime WASM 文件加载路径
+            // transformers.min.js 通过 import.meta.url 推断 publicPath 为 /vendor/，
+            // 但 vendor 目录中没有 ort-wasm-*.wasm 文件，导致模型推理时 WASM 加载失败
+            // 指向 CDN 确保 WASM 文件可访问
+            if (window.transformers.env?.backends?.onnx?.wasm) {
+                window.transformers.env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.1/dist/';
             }
             const statusEl = document.getElementById('whisper-model-status');
             if (statusEl) statusEl.textContent = '模型状态：正在加载...';
@@ -1683,6 +1725,8 @@ class Recorder {
         this.segmentCount = 0;
         this.lastFinalCount = 0;
         this._lastProcessedResultIdx = -1; // 清空去重锚点
+        this._lastCommittedInterim = ''; // 清空跨实例去重状态
+        this._dedupPending = false;
         this.isRecording = false;
     }
 
@@ -1834,6 +1878,8 @@ class Recorder {
         this._userIntendsToRecord = true; // 恢复后启用健康检查和自动重启
         this.lastFinalCount = 0;
         this._lastProcessedResultIdx = -1; // 恢复录音，重置去重锚点
+        this._lastCommittedInterim = ''; // 恢复录音，清空跨实例去重状态
+        this._dedupPending = false;
         this.lastResultTime = Date.now();
         this.shouldRestart = true;
         this.currentDelay = this.restartDelay;
