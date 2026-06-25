@@ -38,7 +38,6 @@ class Recorder {
         this._restartTimeout = null; // 重启定时器ID（用于清理）
         this._forcedRebuildTimeout = null; // 健康检查强制重建定时器ID（用于清理）
         this._autoCommitted = false; // 自动commit一次性标志（每次onstart重置，防止重复触发大字符串拼接）
-        this._isHealthCheckRestart = false; // 健康检查触发的重启标志（不消耗restartCount配额）
         this._startTimeout = null; // onstart超时检测定时器ID（start()后5秒未触发onstart则重建）
         this._connectingHintTimeout = null; // 连接进度提示定时器ID（启动期间的UI反馈）
         this._isStarting = false; // 防重入锁
@@ -67,6 +66,30 @@ class Recorder {
         this._initVisibilityHandler();
         // 页面卸载前刷新日志缓冲区，避免丢失未持久化的 warn/error 日志
         window.addEventListener('beforeunload', () => this._flushPersistBuffer());
+    }
+
+    // ========== 去重锚点管理 ==========
+    // 三个去重锚点：_lastProcessedResultIdx（已处理 final 索引）、
+    //   _lastCommittedInterim（上次提交的 interim 文本）、_dedupPending（新实例首个 final 是否需去重）
+    // 所有创建新 recognition 实例的路径都必须调用其中一个，避免锚点残留导致丢内容或重复内容
+
+    /**
+     * 完全重置三个去重锚点（用于 start/stop/resume 等会话级切换）
+     */
+    _resetDedupAnchors() {
+        this._lastProcessedResultIdx = -1;
+        this._lastCommittedInterim = '';
+        this._dedupPending = false;
+    }
+
+    /**
+     * 为运行时实例重建重置去重锚点（用于健康检查/可见性/onstart超时/_scheduleRestart 重建）
+     * 与 _resetDedupAnchors 的区别：保留 _lastCommittedInterim 并派生 _dedupPending，
+     * 让新实例首个 final 能与上次提交的 interim 做跨实例去重（与 onstart 逻辑一致）
+     */
+    _resetDedupForRebuild() {
+        this._lastProcessedResultIdx = -1;
+        this._dedupPending = !!this._lastCommittedInterim;
     }
 
     // ========== 日志系统方法 ==========
@@ -264,10 +287,8 @@ class Recorder {
             this.currentDelay = this.restartDelay;
             this.lastResultTime = Date.now(); // 重置时间，给新实例30秒干净窗口
             this._autoCommitted = false; // 重置自动commit标志，新实例可以再次触发
-            this._lastProcessedResultIdx = -1; // 重置去重锚点，新实例的 results 从空开始
-            // 如果上次 onend/重启时提交了 interim，标记新实例首个 final 需要去重
-            // 新实例可能重新识别到相同内容，需从首个 final 中去除重复部分
-            this._dedupPending = !!this._lastCommittedInterim;
+            // 重置去重锚点：保留 _lastCommittedInterim 并派生 _dedupPending（跨实例去重）
+            this._resetDedupForRebuild();
             if (!this.sessionStartTime) this.sessionStartTime = Date.now();
             this._log('info', '识别实例启动');
             UI.updateRecordButton(true);
@@ -311,15 +332,14 @@ class Recorder {
             }
 
             if (this.shouldRestart && this.restartCount < this.maxRestarts) {
-                // 健康检查触发的重启是恢复行为，不应消耗正常重启配额
-                // 瞬时错误（no-speech/network）同样不消耗配额
-                if (!this._isTransientError && !this._isHealthCheckRestart) {
+                // 瞬时错误（no-speech/network）不消耗正常重启配额
+                // 健康检查强制重建通过 shouldRestart=false 跳过此 onend 重启分支，因此不消耗配额
+                if (!this._isTransientError) {
                     this.restartCount++;
                 }
-                const reason = this._isHealthCheckRestart ? 'health-check' : (this._isTransientError ? 'transient' : 'normal');
+                const reason = this._isTransientError ? 'transient' : 'normal';
                 this._log('info', `识别重启(第${this.restartCount}次)`, `reason=${reason},delay=${this.currentDelay}ms`);
                 this._isTransientError = false; // 重置标志
-                this._isHealthCheckRestart = false; // 重置健康检查重启标志
                 this.currentDelay = this.restartDelay; // 重置延迟
                 this._restartFailCount = 0;
                 this._scheduleRestart();
@@ -551,7 +571,7 @@ class Recorder {
                         if (!this._userIntendsToRecord) return;
                         this.recognition = this._createRecognition();
                         this.lastFinalCount = 0;
-                        this._lastProcessedResultIdx = -1; // 重置去重锚点
+                        this._resetDedupForRebuild(); // 重置去重锚点（保留跨实例去重状态）
                         this.currentDelay = this.restartDelay;
                         this.lastResultTime = Date.now(); // 重置时间，给新实例干净窗口
                         this.shouldRestart = true; // 恢复重启标志
@@ -635,6 +655,9 @@ class Recorder {
                 this.currentDelay = this.restartDelay;
                 this.lastResultTime = Date.now();
                 this.shouldRestart = true;
+                // onstart 超时实例从未真正运行，其 interimTranscript 是上一实例残留，
+                // commitTranscript 提交的 _lastCommittedInterim 不可信，清空避免新实例首个 final 被误去重
+                this._lastCommittedInterim = '';
                 this._scheduleRestart();
             }
         }, 5000);
@@ -674,11 +697,13 @@ class Recorder {
                     this.isRecording = false;
                     this.recognition = this._createRecognition();
                     this.lastFinalCount = 0;
+                    this._resetDedupForRebuild(); // 重置去重锚点（保留跨实例去重状态，commitTranscript 已写入 _lastCommittedInterim）
                     this.lastResultTime = Date.now();
                     this.currentDelay = this.restartDelay;
                     this.shouldRestart = true;
                     try {
                         this.recognition.start();
+                        this._setStartTimeout(); // 补 onstart 超时安全网（与其他重建路径一致）
                     } catch (e) {
                         this._scheduleRestart();
                     }
@@ -720,7 +745,7 @@ class Recorder {
             this.recognition = this._createRecognition();
             // 重置 lastFinalCount，因为新实例的 event.results 从空开始
             this.lastFinalCount = 0;
-            this._lastProcessedResultIdx = -1; // 重置去重锚点，新实例的 results 从空开始
+            this._resetDedupForRebuild(); // 重置去重锚点（保留跨实例去重状态）
             this.lastResultTime = Date.now(); // 重置时间，给新实例干净窗口
             this.shouldRestart = true; // 恢复重启标志
 
@@ -956,6 +981,26 @@ class Recorder {
         // start() 始终是全新开始（暂停恢复由 resume() 处理）
         this._isPaused = false;
 
+        // 清理上一会话可能残留的定时器，防止陈旧回调 abort 新实例
+        // （重启循环期间用户点开始，旧 _restartTimeout 回调会 abort 刚 start 的新实例）
+        if (this._restartTimeout) {
+            clearTimeout(this._restartTimeout);
+            this._restartTimeout = null;
+        }
+        if (this._forcedRebuildTimeout) {
+            clearTimeout(this._forcedRebuildTimeout);
+            this._forcedRebuildTimeout = null;
+        }
+        if (this._startTimeout) {
+            clearTimeout(this._startTimeout);
+            this._startTimeout = null;
+        }
+        if (this._connectingHintTimeout) {
+            clearTimeout(this._connectingHintTimeout);
+            this._connectingHintTimeout = null;
+        }
+        this._stopHealthCheck(); // 停止上一会话遗留的健康检查，防止其触发新的强制重建
+
         // 检查当前选择的语音识别提供商
         const speechConfig = Storage.getSpeechConfig();
         this._log('info', '开始录音', `provider=${speechConfig.provider}`);
@@ -1046,9 +1091,7 @@ class Recorder {
                 this.segmentCount = 0;
                 this.currentDelay = this.restartDelay;
                 this.lastFinalCount = 0;
-                this._lastProcessedResultIdx = -1; // 全新录音会话，重置去重锚点
-                this._lastCommittedInterim = ''; // 全新录音会话，清空跨实例去重状态
-                this._dedupPending = false;
+                this._resetDedupAnchors(); // 全新录音会话，完全重置去重锚点
                 this.lastResultTime = Date.now();
                 this.shouldRestart = true;
                 this._userIntendsToRecord = true; // 标记用户意图录音
@@ -1162,17 +1205,22 @@ class Recorder {
         if (progressEl) progressEl.style.display = 'block';
         if (statusEl) statusEl.textContent = '正在加载录音文件...';
 
+        // 资源引用提升到 try 外，使 finally 能兜底清理（防止异常路径泄漏 AudioContext/ObjectURL）
+        let audioContext = null;
+        let audioUrl = null;
+        let audioCtx2 = null;
+        let audio = null;
+
         try {
             // 读取录音文件为 ArrayBuffer
             const arrayBuffer = await file.arrayBuffer();
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
             const duration = audioBuffer.duration;
 
             if (duration > 7200) {
                 this._log('warn', '录音文件过长', `duration=${Math.floor(duration)}s`);
                 UI.showToast('录音文件过长（超过2小时），请截取后重试');
-                audioContext.close(); // 关闭已创建的 AudioContext，避免资源泄漏
                 if (progressEl) progressEl.style.display = 'none';
                 return;
             }
@@ -1195,11 +1243,12 @@ class Recorder {
             // 注意：SpeechRecognition 只能识别麦克风输入，无法直接传入音频流
             // 所以需要通过扬声器播放，麦克风捕获回声来间接识别
             audioContext.close(); // 解码完成，关闭第一个 AudioContext
-            const audioUrl = URL.createObjectURL(file);
-            const audio = new Audio(audioUrl);
+            audioContext = null; // 标记已关闭，finally 不再重复关闭
+            audioUrl = URL.createObjectURL(file);
+            audio = new Audio(audioUrl);
 
             // 创建第二个 AudioContext 用于播放控制
-            const audioCtx2 = new (window.AudioContext || window.webkitAudioContext)();
+            audioCtx2 = new (window.AudioContext || window.webkitAudioContext)();
             const sourceNode = audioCtx2.createMediaElementSource(audio);
             sourceNode.connect(audioCtx2.destination); // 输出到扬声器
 
@@ -1275,12 +1324,10 @@ class Recorder {
             isConverting = false;
             try { await fileRecognition.stop(); } catch (e) {}
 
-            // 完成处理
+            // 完成处理：业务对象清理（资源释放统一交由 finally）
             this._importRecognition = null;
             this._importAudio = null;
             this._importAudioCtx = null;
-            audioCtx2.close();
-            URL.revokeObjectURL(audioUrl);
 
             // 将结果写入文本框
             if (textarea) {
@@ -1300,22 +1347,38 @@ class Recorder {
         } catch (err) {
             this._log('error', '文件导入失败', err.message);
             console.error('[Recorder] 文件导入失败:', err);
-            // 清理可能泄漏的资源
+            // 业务对象清理（资源释放统一交由 finally）
             if (this._importRecognition) {
                 try { this._importRecognition.abort(); } catch(e) {}
                 this._importRecognition = null;
             }
             if (this._importAudio) {
-                this._importAudio.pause();
+                try { this._importAudio.pause(); } catch(e) {}
                 this._importAudio.src = '';
                 this._importAudio = null;
             }
             if (this._importAudioCtx) {
-                try { this._importAudioCtx.close(); } catch(e) {}
+                // 此处置 null，实际 close 由 finally 统一执行避免重复
                 this._importAudioCtx = null;
             }
             UI.showToast('录音导入失败：' + (err.message || '不支持的音频格式'));
             if (progressEl) progressEl.style.display = 'none';
+        } finally {
+            // 统一兜底清理 AudioContext 和 ObjectURL，防止任何异常路径泄漏
+            // （AudioContext 泄漏会耗尽浏览器单页实例上限导致音频功能不可用；
+            //  ObjectURL 泄漏会持有 File 强引用阻止 GC，大文件耗尽内存）
+            if (audioContext) {
+                try { audioContext.close(); } catch(e) {}
+                audioContext = null;
+            }
+            if (audioCtx2) {
+                try { audioCtx2.close(); } catch(e) {}
+                audioCtx2 = null;
+            }
+            if (audioUrl) {
+                URL.revokeObjectURL(audioUrl);
+                audioUrl = null;
+            }
         }
     }
 
@@ -1800,14 +1863,15 @@ class Recorder {
         this.restartCount = 0;
         this.segmentCount = 0;
         this.lastFinalCount = 0;
-        this._lastProcessedResultIdx = -1; // 清空去重锚点
-        this._lastCommittedInterim = ''; // 清空跨实例去重状态
-        this._dedupPending = false;
+        this._resetDedupAnchors(); // 完全重置去重锚点
         this.isRecording = false;
     }
 
     toggle() {
-        if (this.isRecording) {
+        // 用 _userIntendsToRecord 而非 isRecording 判断用户是否在录音：
+        // 重启循环期间 isRecording=false 但 _userIntendsToRecord=true，
+        // 此时点击应走 pause()（停止当前会话），而非 start()（会重置时长/计数）
+        if (this._userIntendsToRecord) {
             this.pause();
         } else {
             // 用 _isPaused 标志判断是否恢复（比 accumulatedText 更可靠）
@@ -1822,7 +1886,8 @@ class Recorder {
 
     // 暂停录音（保留已识别内容，可恢复）
     pause() {
-        if (!this.isRecording) return;
+        // 用 _userIntendsToRecord 判断：重启循环期间 isRecording=false 但用户仍在录音，应允许暂停
+        if (!this._userIntendsToRecord) return;
 
         this._log('info', '暂停录音', `charCount=${(this.accumulatedText+this.finalTranscript).length}`);
         this.shouldRestart = false;
@@ -1958,9 +2023,7 @@ class Recorder {
         this._manualStop = false; // 确保恢复录音不受残留标志影响
         this._userIntendsToRecord = true; // 恢复后启用健康检查和自动重启
         this.lastFinalCount = 0;
-        this._lastProcessedResultIdx = -1; // 恢复录音，重置去重锚点
-        this._lastCommittedInterim = ''; // 恢复录音，清空跨实例去重状态
-        this._dedupPending = false;
+        this._resetDedupAnchors(); // 恢复录音，完全重置去重锚点
         this.lastResultTime = Date.now();
         this.shouldRestart = true;
         this.currentDelay = this.restartDelay;
@@ -2046,7 +2109,9 @@ class Recorder {
     _onTouchMove(e) {
         if (Math.abs(e.touches[0].clientY - this.touchStartY) > 20) {
             this.touchMoved = true;
-            if (this.isLongPress && this.isRecording) {
+            // 用 _userIntendsToRecord 而非 isRecording：重启循环期间 isRecording=false 但用户仍在长按录音，
+            // 此时滑动应能取消（与 _onTouchEnd/_onMouseUp/_onTouchCancel/_onMouseLeave 行为一致）
+            if (this.isLongPress && this._userIntendsToRecord) {
                 this.stop();
                 this._cancelLongPress();
             }
@@ -2056,7 +2121,7 @@ class Recorder {
     _onTouchEnd(e) {
         e.preventDefault();
         if (this.isLongPress) {
-            if (this.isRecording) {
+            if (this._userIntendsToRecord) {
                 this.stop();
             }
         } else {
@@ -2068,7 +2133,7 @@ class Recorder {
 
     _onTouchCancel(e) {
         this._cancelLongPress();
-        if (this.isRecording) {
+        if (this._userIntendsToRecord) {
             this.stop();
         }
         this._resetLongPress();
@@ -2086,7 +2151,7 @@ class Recorder {
     _onMouseUp(e) {
         if (e.button !== 0) return;
         if (this.isLongPress) {
-            if (this.isRecording) {
+            if (this._userIntendsToRecord) {
                 this.stop();
             }
         } else {
@@ -2097,7 +2162,7 @@ class Recorder {
     }
 
     _onMouseLeave(e) {
-        if (this.isLongPress && this.isRecording) {
+        if (this.isLongPress && this._userIntendsToRecord) {
             this.stop();
         }
         this._cancelLongPress();
