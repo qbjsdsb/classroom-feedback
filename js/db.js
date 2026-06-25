@@ -384,7 +384,14 @@ class DB {
         // 仅在显式导入标志触发时执行覆盖式迁移
         // 否则只清理孤儿 localStorage 键，避免用旧数据覆盖 IDB 最新数据
         const pendingImport = localStorage.getItem('cf_pending_import') === 'true';
+        // 例外：迁移失败 3 次后保留的 localStorage 数据（cf_migration_attempts >= 3），
+        // 不能被孤儿清理删除，否则用户来不及导出
+        const migrationAbandoned = (await this.get('cf_migration_attempts') || 0) >= 3;
         if (!pendingImport) {
+            if (migrationAbandoned) {
+                console.warn(`[DB] 检测到 ${cfKeys.length} 个 localStorage 键，迁移已放弃重试（attempts>=3），保留数据供用户导出，不清理`);
+                return;
+            }
             console.warn(`[DB] 检测到 ${cfKeys.length} 个孤儿 localStorage 键（非导入触发），仅清理不覆盖`);
             for (const key of cfKeys) {
                 localStorage.removeItem(key);

@@ -277,6 +277,10 @@ const UI = {
         // 已存在 overlay 时仅更新消息，避免重复调用产生相同 id 的多个 overlay 导致残留无法移除
         let overlay = document.getElementById('loading-overlay');
         if (overlay) {
+            // 重置可见性并取消挂起的 hideLoading 移除定时器，避免复用后 loading 不可见或被错误移除
+            overlay.style.opacity = '';
+            overlay.style.transition = '';
+            if (overlay._hideTimer) { clearTimeout(overlay._hideTimer); overlay._hideTimer = null; }
             const msgEl = overlay.querySelector('#loading-message');
             if (msgEl) msgEl.textContent = message;
             return;
@@ -302,7 +306,11 @@ const UI = {
         if (overlay) {
             overlay.style.opacity = '0';
             overlay.style.transition = 'opacity 0.3s';
-            setTimeout(() => overlay.remove(), 300);
+            // 挂载到 overlay 属性，供 showLoading 复用时取消，避免复用后被错误移除
+            overlay._hideTimer = setTimeout(() => {
+                overlay.remove();
+                overlay._hideTimer = null;
+            }, 300);
         }
     },
     

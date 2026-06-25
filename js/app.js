@@ -635,7 +635,7 @@ class App {
                 if (!student) {
                     student = this.currentGroup
                         .map(id => store.getStudentById(id))
-                        .find(s => s && (s.name.endsWith(studentData.studentName) || studentData.studentName.endsWith(s.name)));
+                        .find(s => s && (s.name.endsWith(studentData.studentName) && studentData.studentName.length >= 2));
                 }
                 if (student) studentId = student.id;
             }
