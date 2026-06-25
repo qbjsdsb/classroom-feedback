@@ -1321,27 +1321,51 @@ class Recorder {
             if (typeof window.transformers === 'undefined') {
                 throw new Error('Transformers.js 库未加载，请刷新页面重试');
             }
+            console.log('[Whisper] transformers 模块:', Object.keys(window.transformers).slice(0, 10).join(', ') + '...');
+            console.log('[Whisper] pipeline 类型:', typeof window.transformers.pipeline);
+            console.log('[Whisper] env 类型:', typeof window.transformers.env);
+
             // 配置模型下载源为国内镜像（HuggingFace 在国内被墙）
             if (window.transformers.env) {
                 window.transformers.env.remoteHost = 'https://hf-mirror.com';
                 // 允许从镜像下载模型，不使用本地缓存路径的默认行为
                 window.transformers.env.allowLocalModels = false;
+                console.log('[Whisper] env.remoteHost:', window.transformers.env.remoteHost);
+                console.log('[Whisper] env.backends:', JSON.stringify(window.transformers.env.backends));
             }
+
             // 配置 ONNX Runtime WASM 文件加载路径
-            // transformers.min.js 通过 import.meta.url 推断 publicPath 为 /vendor/，
-            // 但 vendor 目录中没有 ort-wasm-*.wasm 文件，导致模型推理时 WASM 加载失败
-            // 指向 CDN 确保 WASM 文件可访问
-            if (window.transformers.env?.backends?.onnx?.wasm) {
-                window.transformers.env.backends.onnx.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.1/dist/';
+            // transformers.min.js 作为 ES module 从 /vendor/ 加载时，import.meta.url
+            // 推断 publicPath 为 /vendor/，但 vendor 目录没有 ort-wasm-*.wasm
+            // transformers.js 内部有自动 CDN 逻辑，但某些情况下可能未正确触发
+            // 显式设置 wasmPaths 确保 WASM 文件从 CDN 加载
+            const onnxEnv = window.transformers.env.backends?.onnx;
+            if (onnxEnv) {
+                if (!onnxEnv.wasm) onnxEnv.wasm = {};
+                onnxEnv.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.1/dist/';
+                console.log('[Whisper] wasmPaths 已设置');
+            } else {
+                console.warn('[Whisper] env.backends.onnx 不存在，WASM 路径将由 transformers.js 内部自动配置');
             }
+
             const statusEl = document.getElementById('whisper-model-status');
             if (statusEl) statusEl.textContent = '模型状态：正在加载...';
 
+            console.log('[Whisper] 开始创建 pipeline...');
             this._whisperPipeline = await window.transformers.pipeline(
                 'automatic-speech-recognition',
                 'Xenova/whisper-small',
                 {
                     progress_callback: (progress) => {
+                        if (progress.status === 'initiate') {
+                            console.log('[Whisper] 开始下载文件:', progress.file);
+                        } else if (progress.status === 'progress') {
+                            console.log(`[Whisper] 下载 ${progress.file}: ${Math.round(progress.progress)}%`);
+                        } else if (progress.status === 'done') {
+                            console.log('[Whisper] 文件下载完成:', progress.file);
+                        } else if (progress.status === 'ready') {
+                            console.log('[Whisper] pipeline 就绪');
+                        }
                         if (statusEl && progress.status) {
                             const pct = progress.progress ? Math.round(progress.progress) : 0;
                             statusEl.textContent = `模型状态：${progress.status} ${pct ? pct + '%' : ''}`;
@@ -1351,13 +1375,16 @@ class Recorder {
                 }
             );
             this._whisperLoaded = true;
+            console.log('[Whisper] 模型加载成功');
             if (statusEl) statusEl.textContent = '模型状态：已就绪 ✓';
             UI.showToast('本地AI语音识别模型加载完成');
         } catch (err) {
             console.error('[Whisper] 模型加载失败:', err);
+            console.error('[Whisper] 错误堆栈:', err.stack);
             const statusEl = document.getElementById('whisper-model-status');
             if (statusEl) statusEl.textContent = '模型状态：加载失败 - ' + err.message;
             UI.showToast('模型加载失败：' + err.message);
+            this._log('error', 'Whisper模型加载失败', err.message);
         } finally {
             this._whisperLoading = false;
         }
