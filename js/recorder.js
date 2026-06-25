@@ -1312,17 +1312,18 @@ class Recorder {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             this._whisperMediaStream = stream;
 
-            // 创建 AudioContext 和 AnalyserNode 用于收集音频数据
-            this._whisperAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            // 创建 AudioContext，指定采样率为 16000Hz（Whisper 模型要求的采样率）
+            // 不指定时浏览器默认 44100 或 48000Hz，会导致 Whisper 收到错误采样率的音频
+            const SAMPLE_RATE = 16000;
+            const CHUNK_DURATION = 10; // 秒
+            const BUFFER_SIZE = SAMPLE_RATE * CHUNK_DURATION;
+
+            const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+            this._whisperAudioContext = new AudioContextCtor({ sampleRate: SAMPLE_RATE });
             const source = this._whisperAudioContext.createMediaStreamSource(stream);
             const analyser = this._whisperAudioContext.createAnalyser();
             analyser.fftSize = 16384; // 必须是2的幂
             source.connect(analyser);
-
-            // 定时采集音频片段进行识别（每10秒识别一次）
-            const SAMPLE_RATE = 16000;
-            const CHUNK_DURATION = 10; // 秒
-            const BUFFER_SIZE = SAMPLE_RATE * CHUNK_DURATION;
 
             // 使用实例变量保存缓冲区，支持暂停恢复
             if (!this._whisperAudioBuffer) {
@@ -1340,46 +1341,30 @@ class Recorder {
                 for (let i = 0; i < inputData.length; i++) {
                     if (this._whisperBufferIndex < BUFFER_SIZE) {
                         this._whisperAudioBuffer[this._whisperBufferIndex++] = inputData[i];
+                    } else if (!this._whisperRecognizing) {
+                        // 缓冲区已满且识别空闲：触发识别（同步重置索引到0），然后写入当前样本
+                        // _recognizeWhisperChunk 在 await 之前会同步执行 slice + 重置 _whisperBufferIndex=0
+                        this._recognizeWhisperChunk(SAMPLE_RATE, CHUNK_DURATION);
+                        this._whisperAudioBuffer[this._whisperBufferIndex++] = inputData[i];
                     }
+                    // else: 缓冲区已满且识别正在进行，丢弃当前样本（Whisper推理速度限制，无法避免）
+                    // 不写入避免 Float32Array 越界写入和索引异常增长导致重复识别旧数据
                 }
             };
             analyser.connect(processor);
-            processor.connect(this._whisperAudioContext.destination);
+            // 不能直接 connect(destination)，否则麦克风音频会从扬声器播放产生回声/啸叫
+            // ScriptProcessorNode 必须连接 destination 才能触发 onaudioprocess
+            // 通过 GainNode 设为 0 音量作为中间节点，既触发处理又不产生声音
+            const silentGain = this._whisperAudioContext.createGain();
+            silentGain.gain.value = 0;
+            processor.connect(silentGain);
+            silentGain.connect(this._whisperAudioContext.destination);
 
             // 定时识别（带互斥锁防止并发）
             this._whisperRecognizing = false;
             this._whisperRecognizeInterval = setInterval(async () => {
                 if (!this.isRecording || this._whisperBufferIndex < SAMPLE_RATE * 3) return; // 至少3秒才识别
-                if (this._whisperRecognizing) return; // 防止并发
-
-                this._whisperRecognizing = true;
-                const chunk = this._whisperAudioBuffer.slice(0, this._whisperBufferIndex);
-                this._whisperBufferIndex = 0;
-
-                try {
-                    const result = await this._whisperPipeline(chunk, {
-                        sampling_rate: SAMPLE_RATE,
-                        language: 'chinese',
-                        task: 'transcribe',
-                        chunk_length_s: CHUNK_DURATION
-                    });
-
-                    if (result && result.text && result.text.trim()) {
-                        const text = result.text.trim();
-                        this.accumulatedText += text;
-                        this.updateDisplay();
-
-                        const textarea = document.getElementById('transcript');
-                        if (textarea) {
-                            textarea.value = this.accumulatedText;
-                            textarea.scrollTop = textarea.scrollHeight;
-                        }
-                    }
-                } catch (err) {
-                    console.warn('[Whisper] 识别出错:', err);
-                } finally {
-                    this._whisperRecognizing = false;
-                }
+                await this._recognizeWhisperChunk(SAMPLE_RATE, CHUNK_DURATION);
             }, CHUNK_DURATION * 1000);
 
             return true;
@@ -1397,6 +1382,47 @@ class Recorder {
             }
             UI.showToast('本地AI识别启动失败：' + err.message);
             return false;
+        }
+    }
+
+    /**
+     * 执行一次 Whisper 识别（从缓冲区取数据，重置索引，调用模型）
+     * 供定时器和缓冲区满时共用，带互斥锁防止并发
+     */
+    async _recognizeWhisperChunk(sampleRate, chunkDuration) {
+        // 互斥锁：防止定时器和缓冲区满同时触发两次识别
+        if (this._whisperRecognizing) return;
+        // 缓冲区数据不足时不识别
+        if (this._whisperBufferIndex < sampleRate * 3) return;
+
+        this._whisperRecognizing = true;
+        // 取出当前缓冲区数据并立即重置索引，让 onaudioprocess 可以继续写入新数据
+        const chunk = this._whisperAudioBuffer.slice(0, this._whisperBufferIndex);
+        this._whisperBufferIndex = 0;
+
+        try {
+            const result = await this._whisperPipeline(chunk, {
+                sampling_rate: sampleRate,
+                language: 'chinese',
+                task: 'transcribe',
+                chunk_length_s: chunkDuration
+            });
+
+            if (result && result.text && result.text.trim()) {
+                const text = result.text.trim();
+                this.accumulatedText += text;
+                this.updateDisplay();
+
+                const textarea = document.getElementById('transcript');
+                if (textarea) {
+                    textarea.value = this.accumulatedText;
+                    textarea.scrollTop = textarea.scrollHeight;
+                }
+            }
+        } catch (err) {
+            console.warn('[Whisper] 识别出错:', err);
+        } finally {
+            this._whisperRecognizing = false;
         }
     }
 
