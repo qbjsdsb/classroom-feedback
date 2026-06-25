@@ -452,10 +452,11 @@ class Recorder {
     _startHealthCheck() {
         this._stopHealthCheck();
         this._healthCheckFailCount = 0; // 健康检查失败计数
-        // Safari 识别会话更短更不稳定，需要更频繁的检查和更短的阈值
-        // 非 Safari 也需要较短阈值：Chrome 的 SpeechRecognition 可能静默失效（不触发 onend/onerror）
-        const checkInterval = 10000; // 统一10秒检查间隔
-        const healthThreshold = this.isSafari ? 15000 : 20000; // Safari 15秒，其他 20秒
+        // Safari 识别会话更短更不稳定，需要更频繁的检查
+        // 非 Safari 也需要健康检查：Chrome 的 SpeechRecognition 可能静默失效（不触发 onend/onerror）
+        // 但阈值不能太短，否则正常停顿（让学生做题等）会误触发重启导致断断续续
+        const checkInterval = 15000; // 15秒检查一次
+        const healthThreshold = this.isSafari ? 45000 : 60000; // Safari 45秒，其他 60秒
         // 定期检查识别是否还在正常工作
         this.healthCheckInterval = setInterval(() => {
             // 基于 _userIntendsToRecord 而非 isRecording
@@ -473,9 +474,9 @@ class Recorder {
                 this._healthCheckFailCount++;
                 this._log('warn', `健康检查:长时间无结果(第${this._healthCheckFailCount}次)`, `elapsed=${Math.round(timeSinceLastResult/1000)}s`);
 
-                if (this._healthCheckFailCount >= 2) {
-                    // 连续两次健康检查都失败，recognition 实例可能已异常
-                    this._log('warn', '健康检查连续失败，强制重建实例');
+                if (this._healthCheckFailCount >= 3) {
+                    // 连续3次健康检查都失败（约3分钟无结果），recognition 实例很可能已异常
+                    this._log('warn', '健康检查连续3次失败，强制重建实例');
                     // 先设置 shouldRestart = false，防止 abort() 触发的 onend 重复重启
                     this.shouldRestart = false;
                     // 保存当前未提交的文本，避免 abort() 丢弃 interim 结果
@@ -492,7 +493,7 @@ class Recorder {
                         this.recognition = this._createRecognition();
                         this.lastFinalCount = 0;
                         this.currentDelay = this.restartDelay;
-                        this.lastResultTime = Date.now(); // 重置时间，给新实例30秒窗口
+                        this.lastResultTime = Date.now(); // 重置时间，给新实例干净窗口
                         this.shouldRestart = true; // 恢复重启标志
                         try {
                             this.recognition.start();
@@ -504,29 +505,9 @@ class Recorder {
                             this._scheduleRestart();
                         }
                     }, 300);
-                } else {
-                    // 首次失败：用 abort() 替代 stop()，更快触发 onend 恢复
-                    // stop() 会等待待处理音频处理完毕，僵尸实例可能永远不触发 onend
-                    // abort() 立即终止，onend 更快触发，减少转录空白时间
-                    this._isHealthCheckRestart = true; // 标记为健康检查重启，不消耗 restartCount
-                    try {
-                        this.recognition.abort();
-                        // onend 会触发 _scheduleRestart 创建新实例
-                    } catch (e) {
-                        // abort 失败，直接重建
-                        this._stopHealthCheck(); // 避免健康检查与重试竞争
-                        this.shouldRestart = false;
-                        this.commitTranscript();
-                        this._cleanupRecognition(this.recognition);
-                        this.isRecording = false;
-                        this.recognition = this._createRecognition();
-                        this.lastFinalCount = 0;
-                        this.currentDelay = this.restartDelay;
-                        this.lastResultTime = Date.now();
-                        this.shouldRestart = true;
-                        this._scheduleRestart();
-                    }
                 }
+                // 首次和第二次失败：只记录警告，不中断识别
+                // 课堂中正常停顿（让学生做题等）不应触发重启，避免断断续续
             } else {
                 this._healthCheckFailCount = 0;
             }
