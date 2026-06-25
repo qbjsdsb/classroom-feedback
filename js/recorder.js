@@ -1352,13 +1352,23 @@ class Recorder {
             console.log('[Whisper] pipeline 类型:', typeof window.transformers.pipeline);
             console.log('[Whisper] env 类型:', typeof window.transformers.env);
 
-            // 配置模型下载源为国内镜像（HuggingFace 在国内被墙）
+            // 配置模型加载方式
+            // 关键修复：hf-mirror.com 对 onnx 文件返回 302 重定向到 cas-bridge.xethub.hf.co
+            // （AWS CloudFront CDN），这个 xet CDN 域名在国内被墙，浏览器无法访问，
+            // 导致 transformers.js 跟随重定向后下载失败。
+            // 解决方案：本地托管 whisper-tiny 模型（量化版约 41MB），完全离线加载
             if (window.transformers.env) {
+                // 启用本地模型加载
+                window.transformers.env.allowLocalModels = true;
+                // 仍然保留 remoteHost 作为 fallback（用于未来可能的远程模型）
                 window.transformers.env.remoteHost = 'https://hf-mirror.com';
-                // 允许从镜像下载模型，不使用本地缓存路径的默认行为
-                window.transformers.env.allowLocalModels = false;
-                console.log('[Whisper] env.remoteHost:', window.transformers.env.remoteHost);
-                console.log('[Whisper] env.backends:', JSON.stringify(window.transformers.env.backends));
+                // 指定本地模型路径为 vendor/whisper-tiny
+                // transformers.js 会从 {localModelPath}/{modelId}/ 加载文件
+                // 但我们的模型直接放在 vendor/whisper-tiny/ 下，所以用空 modelId
+                // 实际做法：用相对路径 './vendor/' 作为 localModelPath
+                window.transformers.env.localModelPath = '/vendor';
+                console.log('[Whisper] env.localModelPath:', window.transformers.env.localModelPath);
+                console.log('[Whisper] env.allowLocalModels:', window.transformers.env.allowLocalModels);
             }
 
             // 配置 ONNX Runtime WASM 文件加载路径
@@ -1379,10 +1389,15 @@ class Recorder {
             if (statusEl) statusEl.textContent = '模型状态：正在加载...';
 
             console.log('[Whisper] 开始创建 pipeline...');
+            // 使用本地托管的 whisper-tiny 模型（量化版）
+            // 模型文件位于 /vendor/whisper-tiny/，env.localModelPath=/vendor
+            // transformers.js 会从 /vendor/whisper-tiny/ 加载
+            // local_files_only: true 强制只从本地加载，不尝试远程下载
             this._whisperPipeline = await window.transformers.pipeline(
                 'automatic-speech-recognition',
-                'Xenova/whisper-small',
+                'whisper-tiny',
                 {
+                    local_files_only: true,
                     progress_callback: (progress) => {
                         if (progress.status === 'initiate') {
                             console.log('[Whisper] 开始下载文件:', progress.file);
