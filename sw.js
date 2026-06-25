@@ -1,5 +1,5 @@
 // Service Worker - 课堂反馈助手离线缓存
-const CACHE_NAME = 'classroom-feedback-v1.9.52';
+const CACHE_NAME = 'classroom-feedback-v1.9.53';
 
 // 需要缓存的静态资源（同时包含 /tutorial 兼容 Cloudflare Pretty URL）
 const STATIC_ASSETS = [
@@ -8,6 +8,10 @@ const STATIC_ASSETS = [
     '/tutorial.html',
     '/tutorial',
     '/icon.svg',
+    '/icon-192.png',
+    '/icon-512.png',
+    '/icon-maskable-192.png',
+    '/icon-maskable-512.png',
     '/css/style.css',
     '/js/ai.js',
     '/js/app.js',
@@ -92,6 +96,7 @@ self.addEventListener('fetch', (event) => {
                 return response;
             }).catch(() => {
                 // 网络失败，尝试缓存
+                // 导航请求无 ?v= 版本号，用 ignoreSearch 兼容 /tutorial → /tutorial.html 等场景
                 return caches.match(event.request, { ignoreSearch: true }).then((cached) => {
                     if (cached) return cached;
                     // 完全离线且无缓存时返回首页
@@ -103,8 +108,11 @@ self.addEventListener('fetch', (event) => {
     }
 
     // 静态资源：缓存优先，后台更新（stale-while-revalidate）
+    // 注意：match 与 put 必须使用相同的键语义。静态资源用 ?v= 做缓存破坏，
+    // 让 ?v= 参与匹配（不用 ignoreSearch），这样升级 ?v= 后旧缓存自然失效走网络，
+    // 避免"match 命中旧版本但 put 写入新键"导致版本升级后仍返回旧资源的问题。
     event.respondWith(
-        caches.match(event.request, { ignoreSearch: true }).then((cached) => {
+        caches.match(event.request).then((cached) => {
             if (cached) {
                 // 后台更新缓存
                 fetch(event.request).then((response) => {

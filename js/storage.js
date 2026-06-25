@@ -155,27 +155,33 @@ class Storage {
     static getStyle() {
         const data = this._getCache('cf_style');
         if (!data) return JSON.parse(JSON.stringify(DEFAULT_STYLE));
-        const style = (typeof data === 'string') ? JSON.parse(data) : data;
-        const defaults = JSON.parse(JSON.stringify(DEFAULT_STYLE));
-        // 深度合并 moduleLengths：
-        // 1. 确保每个模块都存在（新增模块不会丢失）
-        // 2. 每个模块的 min/max 逐字段合并（防止只存了 min 丢失 max）
-        if (style.moduleLengths) {
-            for (const [modName, savedLen] of Object.entries(style.moduleLengths)) {
-                if (defaults.moduleLengths[modName]) {
-                    defaults.moduleLengths[modName] = {
-                        ...defaults.moduleLengths[modName],
-                        ...savedLen
-                    };
-                } else {
-                    defaults.moduleLengths[modName] = { ...savedLen };
+        try {
+            const style = (typeof data === 'string') ? JSON.parse(data) : data;
+            const defaults = JSON.parse(JSON.stringify(DEFAULT_STYLE));
+            // 深度合并 moduleLengths：
+            // 1. 确保每个模块都存在（新增模块不会丢失）
+            // 2. 每个模块的 min/max 逐字段合并（防止只存了 min 丢失 max）
+            if (style.moduleLengths) {
+                for (const [modName, savedLen] of Object.entries(style.moduleLengths)) {
+                    if (defaults.moduleLengths[modName]) {
+                        defaults.moduleLengths[modName] = {
+                            ...defaults.moduleLengths[modName],
+                            ...savedLen
+                        };
+                    } else {
+                        defaults.moduleLengths[modName] = { ...savedLen };
+                    }
                 }
             }
+            const result = { ...defaults, ...style, moduleLengths: defaults.moduleLengths };
+            // 迁移：如果全局 maxLength 仍是旧值 300，更新为 150
+            if (result.maxLength === 300) result.maxLength = 150;
+            return result;
+        } catch (e) {
+            // 损坏的 JSON 或异常结构会导致整个渲染链路崩溃，降级返回默认值
+            console.warn('[Storage] getStyle 解析失败，返回默认值:', e);
+            return JSON.parse(JSON.stringify(DEFAULT_STYLE));
         }
-        const result = { ...defaults, ...style, moduleLengths: defaults.moduleLengths };
-        // 迁移：如果全局 maxLength 仍是旧值 300，更新为 150
-        if (result.maxLength === 300) result.maxLength = 150;
-        return result;
     }
 
     static saveStyle(style) {

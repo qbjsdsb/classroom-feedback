@@ -387,6 +387,14 @@ class App {
         const escapeRegex = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
         const commonContents = {};
+        // 检测 lookbehind 支持（旧 Safari < 16.4 不支持，new RegExp 会抛 SyntaxError）
+        let supportsLookbehind = true;
+        try {
+            new RegExp('(?<=a)b');
+        } catch (e) {
+            supportsLookbehind = false;
+            console.warn('[App] 当前浏览器不支持正则 lookbehind，_unifyCommonModules 降级处理');
+        }
         for (const modName of COMMON_MODULES) {
             const mod = first.feedback.find(f => f.module === modName);
             if (mod) {
@@ -394,21 +402,28 @@ class App {
                 let cleanedContent = mod.content;
                 for (const pattern of namePatterns) {
                     const p = escapeRegex(pattern);
-                    // 1. 替换 "请pattern..." 模式
-                    const regex1 = new RegExp(`请${p}([在需应]|同学|完成|独立|复习|梳理|注意|重点|及时)`, 'g');
-                    cleanedContent = cleanedContent.replace(regex1, '请同学们$1');
-                    // 2. 替换 "pattern的" 模式（前面不能是汉字，避免"说明的"被"明"误替换）
-                    const regex2 = new RegExp(`(?<![\\u4e00-\\u9fff])${p}的`, 'g');
-                    cleanedContent = cleanedContent.replace(regex2, '同学们的');
-                    // 3. 替换 "pattern在..." 模式（pattern在课堂上、pattern在课后）
-                    const regex3 = new RegExp(`(?<![\\u4e00-\\u9fff])${p}在(课堂|课后|本节课|课堂中)`, 'g');
-                    cleanedContent = cleanedContent.replace(regex3, '同学们在$1');
-                    // 4. 替换 "pattern表现"、"pattern回答" 等动词搭配
-                    const regex4 = new RegExp(`(?<![\\u4e00-\\u9fff])${p}(表现|回答|提问|参与|完成|掌握|理解|笔记|专注|积极|安静)`, 'g');
-                    cleanedContent = cleanedContent.replace(regex4, '同学们$1');
-                    // 5. 替换 "pattern需要"、"pattern应" 模式
-                    const regex5 = new RegExp(`(?<![\\u4e00-\\u9fff])${p}(需要|应|可以|建议|需)`, 'g');
-                    cleanedContent = cleanedContent.replace(regex5, '同学们$1');
+                    // lookbehind 前缀：前面不能是汉字，避免"说明的"被"明"误替换、"申请X在"被"X在"误替换
+                    const lb = supportsLookbehind ? '(?<![\\u4e00-\\u9fff])' : '';
+                    try {
+                        // 1. 替换 "请pattern..." 模式（前面加 lookbehind，避免"申请pattern"被误替换为"申请同学们"）
+                        const regex1 = new RegExp(`${lb}请${p}([在需应]|同学|完成|独立|复习|梳理|注意|重点|及时)`, 'g');
+                        cleanedContent = cleanedContent.replace(regex1, '请同学们$1');
+                        // 2. 替换 "pattern的" 模式
+                        const regex2 = new RegExp(`${lb}${p}的`, 'g');
+                        cleanedContent = cleanedContent.replace(regex2, '同学们的');
+                        // 3. 替换 "pattern在..." 模式（pattern在课堂上、pattern在课后）
+                        const regex3 = new RegExp(`${lb}${p}在(课堂|课后|本节课|课堂中)`, 'g');
+                        cleanedContent = cleanedContent.replace(regex3, '同学们在$1');
+                        // 4. 替换 "pattern表现"、"pattern回答" 等动词搭配
+                        const regex4 = new RegExp(`${lb}${p}(表现|回答|提问|参与|完成|掌握|理解|笔记|专注|积极|安静)`, 'g');
+                        cleanedContent = cleanedContent.replace(regex4, '同学们$1');
+                        // 5. 替换 "pattern需要"、"pattern应" 模式
+                        const regex5 = new RegExp(`${lb}${p}(需要|应|可以|建议|需)`, 'g');
+                        cleanedContent = cleanedContent.replace(regex5, '同学们$1');
+                    } catch (e) {
+                        // 单个正则异常时跳过该 pattern，不影响其他替换
+                        console.warn(`[App] _unifyCommonModules 替换 pattern "${pattern}" 失败:`, e);
+                    }
                 }
                 commonContents[modName] = cleanedContent;
             }
