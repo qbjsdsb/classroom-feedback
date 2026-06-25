@@ -14,6 +14,7 @@ class Recorder {
         this.finalTranscript = '';
         this.interimTranscript = '';
         this.lastFinalCount = 0; // 上次 onresult 时的 final result 数量，用于检测新增
+        this._lastProcessedResultIdx = -1; // 已处理的最大 final results 索引（去重保护，-1 表示无）
         this.sessionStartTime = null;
         this.timerInterval = null;
         this.permissionChecked = false;
@@ -255,6 +256,7 @@ class Recorder {
             this.currentDelay = this.restartDelay;
             this.lastResultTime = Date.now(); // 重置时间，给新实例30秒干净窗口
             this._autoCommitted = false; // 重置自动commit标志，新实例可以再次触发
+            this._lastProcessedResultIdx = -1; // 重置去重锚点，新实例的 results 从空开始
             if (!this.sessionStartTime) this.sessionStartTime = Date.now();
             this._log('info', '识别实例启动');
             UI.updateRecordButton(true);
@@ -290,8 +292,10 @@ class Recorder {
                 return;
             }
 
-            this.commitTranscript();
-            // 仅在非重启状态下更新按钮状态，避免重启期间按钮闪烁
+            // onend 自动重启时只提交 final，不提交 interim
+            // 手机端 Chrome 会频繁触发 onend（网络波动、段间停顿等），新实例会重新识别
+            // 麦克风缓冲区残留的语音，若提交 interim 会导致同一段话被重复写入
+            this.commitTranscript(false);
             if (!this.shouldRestart) {
                 UI.updateRecordButton(false);
             }
@@ -352,17 +356,34 @@ class Recorder {
             let newFinalCount = 0;
             let hasInterim = false;
 
-            for (let i = startIdx; i < event.results.length; i++) {
+            // 去重保护：某些手机端 Chrome 版本会对同一个 final result 多次触发 onresult
+            // （event.resultIndex 指向已处理过的 final），导致重复追加
+            // 用 _lastProcessedResultIdx 记录已处理的最大 final results 索引，跳过已处理的 final
+            // 注意：interim 仍需处理（浏览器会不断修正同一个 interim），只对 final 去重
+            const lastProcessedIdx = this._lastProcessedResultIdx;
+            const effectiveStart = Math.max(startIdx, 0);
+            let maxFinalIdx = lastProcessedIdx;
+
+            for (let i = effectiveStart; i < event.results.length; i++) {
                 const transcript = event.results[i][0].transcript;
                 if (event.results[i].isFinal) {
+                    // 去重：跳过已经处理过的 final result（索引 <= lastProcessedIdx）
+                    if (i <= lastProcessedIdx) {
+                        // 该 final 已处理过，跳过避免重复
+                        continue;
+                    }
                     newFinalCount++;
                     newFinal += transcript;
+                    if (i > maxFinalIdx) maxFinalIdx = i;
                 } else {
                     // 只取最后一个 interim（浏览器会不断修正同一个 interim result）
                     this.interimTranscript = transcript;
                     hasInterim = true;
                 }
             }
+
+            // 更新已处理的最大 final results 索引（仅记录 final，interim 不计）
+            this._lastProcessedResultIdx = maxFinalIdx;
 
             // 如果本次事件中没有新的 interim，说明之前的 interim 已转为 final 或被清除
             // 需要清空 interimTranscript，避免显示过时的临时文本
@@ -479,8 +500,8 @@ class Recorder {
                     this._log('warn', '健康检查连续3次失败，强制重建实例');
                     // 先设置 shouldRestart = false，防止 abort() 触发的 onend 重复重启
                     this.shouldRestart = false;
-                    // 保存当前未提交的文本，避免 abort() 丢弃 interim 结果
-                    this.commitTranscript();
+                    // 只提交 final，不提交 interim（自动重启场景，避免重复）
+                    this.commitTranscript(false);
                     // 先 abort 旧实例，确保完全停止
                     try { this.recognition.abort(); } catch (e) {}
                     this._cleanupRecognition(this.recognition); // 打破闭包循环引用
@@ -492,6 +513,7 @@ class Recorder {
                         if (!this._userIntendsToRecord) return;
                         this.recognition = this._createRecognition();
                         this.lastFinalCount = 0;
+                        this._lastProcessedResultIdx = -1; // 重置去重锚点
                         this.currentDelay = this.restartDelay;
                         this.lastResultTime = Date.now(); // 重置时间，给新实例干净窗口
                         this.shouldRestart = true; // 恢复重启标志
@@ -547,7 +569,7 @@ class Recorder {
             if (!this.isRecording && this._userIntendsToRecord) {
                 this._log('warn', 'onstart超时(5秒)，重建实例');
                 this.shouldRestart = false;
-                this.commitTranscript();
+                this.commitTranscript(false);
                 try { this.recognition.abort(); } catch (e) {}
                 this._cleanupRecognition(this.recognition);
                 this.isRecording = false;
@@ -588,8 +610,8 @@ class Recorder {
                 if (backgroundDuration > 30000 && this._userIntendsToRecord) {
                     this._log('warn', '页面后台超过30秒，重建实例', `bg=${Math.round(backgroundDuration/1000)}s`);
                     this.shouldRestart = false; // 防止 abort 触发的 onend 重复调度
-                    // 保存当前未提交的文本，避免 abort() 丢弃 interim 结果
-                    this.commitTranscript();
+                    // 只提交 final，不提交 interim（自动重启场景，避免重复）
+                    this.commitTranscript(false);
                     try { this.recognition.abort(); } catch (e) {}
                     this._cleanupRecognition(this.recognition); // 打破闭包循环引用
                     this.isRecording = false;
@@ -630,8 +652,10 @@ class Recorder {
             // 先确保旧实例完全停止，避免 "already started" 错误
             // 设置 shouldRestart = false 防止 abort() 触发的 onend 重复调度
             this.shouldRestart = false;
-            // 保存当前未提交的文本，避免 abort() 丢弃 interim 结果
-            this.commitTranscript();
+            // 只提交 final，不提交 interim
+            // 手机端重启后新实例会重新识别，提交 interim 会导致同一段话重复
+            // abort() 会丢弃 interim，但这是可接受的（避免重复比避免丢失更重要）
+            this.commitTranscript(false);
             try { this.recognition.abort(); } catch (e) {}
             this._cleanupRecognition(this.recognition); // 打破闭包循环引用
             // Safari 的 abort() 可能不触发 onend，手动更新状态
@@ -641,6 +665,7 @@ class Recorder {
             this.recognition = this._createRecognition();
             // 重置 lastFinalCount，因为新实例的 event.results 从空开始
             this.lastFinalCount = 0;
+            this._lastProcessedResultIdx = -1; // 重置去重锚点，新实例的 results 从空开始
             this.lastResultTime = Date.now(); // 重置时间，给新实例干净窗口
             this.shouldRestart = true; // 恢复重启标志
 
@@ -844,13 +869,15 @@ class Recorder {
         }
     }
 
-    commitTranscript() {
+    commitTranscript(includeInterim = true) {
         if (this.finalTranscript) {
             this.accumulatedText += this.finalTranscript;
             this.finalTranscript = '';
         }
         // 将最后的 interim 文本也保存，避免丢失用户停止时还未确认的内容
-        if (this.interimTranscript) {
+        // 注意：仅在手动停止（pause/stop）时提交 interim
+        // onend 自动重启时不应提交 interim（新实例会重新识别同一段语音，导致重复）
+        if (includeInterim && this.interimTranscript) {
             this.accumulatedText += this.interimTranscript;
             this.interimTranscript = '';
         }
@@ -959,6 +986,7 @@ class Recorder {
                 this.segmentCount = 0;
                 this.currentDelay = this.restartDelay;
                 this.lastFinalCount = 0;
+                this._lastProcessedResultIdx = -1; // 全新录音会话，重置去重锚点
                 this.lastResultTime = Date.now();
                 this.shouldRestart = true;
                 this._userIntendsToRecord = true; // 标记用户意图录音
@@ -1654,6 +1682,7 @@ class Recorder {
         this.restartCount = 0;
         this.segmentCount = 0;
         this.lastFinalCount = 0;
+        this._lastProcessedResultIdx = -1; // 清空去重锚点
         this.isRecording = false;
     }
 
@@ -1804,6 +1833,7 @@ class Recorder {
         this._manualStop = false; // 确保恢复录音不受残留标志影响
         this._userIntendsToRecord = true; // 恢复后启用健康检查和自动重启
         this.lastFinalCount = 0;
+        this._lastProcessedResultIdx = -1; // 恢复录音，重置去重锚点
         this.lastResultTime = Date.now();
         this.shouldRestart = true;
         this.currentDelay = this.restartDelay;
