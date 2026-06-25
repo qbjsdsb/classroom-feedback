@@ -891,8 +891,8 @@ ${moduleInstructions}
     static _ensureAllStudents(result, studentNames, modules) {
         const foundNames = result.map(r => r.studentName);
         for (const name of studentNames) {
-            // 模糊匹配：仅允许AI省略姓氏，不允许短名匹配长名
-            const exists = foundNames.some(fn => fn === name || fn.endsWith(name) || name.endsWith(fn));
+            // 模糊匹配：仅允许AI省略姓氏（全名.endsWith(AI名)），不允许短名匹配长名
+            const exists = foundNames.some(fn => fn === name || (name.endsWith(fn) && fn.length >= 2));
             if (!exists) {
                 result.push({
                     studentName: name,

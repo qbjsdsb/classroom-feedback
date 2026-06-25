@@ -80,6 +80,98 @@ class DataStore {
 
         // 初始化默认 Prompt 模板
         this.initDefaultPromptTemplates();
+
+        // 清理过期的软删除快照（trash），并自动恢复未过期的（防止撤销窗口内刷新导致数据丢失）
+        await this._restoreFromTrash();
+    }
+
+    // === 软删除快照持久化（trash） ===
+    // 复用 keyvalue store，避免升级 DB_VERSION；撤销窗口 5 秒，过期时间给 60 秒余量
+
+    static _TRASH_TTL = 60000;
+
+    async _saveTrash(type, key, snapshot) {
+        try {
+            await DB.set(`trash_${type}_${key}`, { snapshot, expiresAt: Date.now() + this._TRASH_TTL });
+        } catch (e) {
+            console.warn(`[DataStore] 保存 trash(${type}) 失败:`, e);
+        }
+    }
+
+    async _loadTrash(type, key) {
+        try {
+            const record = await DB.get(`trash_${type}_${key}`);
+            if (!record) return null;
+            if (record.expiresAt < Date.now()) {
+                await DB.remove(`trash_${type}_${key}`);
+                return null;
+            }
+            return record.snapshot;
+        } catch (e) {
+            console.warn(`[DataStore] 读取 trash(${type}) 失败:`, e);
+            return null;
+        }
+    }
+
+    async _deleteTrash(type, key) {
+        try {
+            await DB.remove(`trash_${type}_${key}`);
+        } catch (e) {
+            console.warn(`[DataStore] 删除 trash(${type}) 失败:`, e);
+        }
+    }
+
+    async _cleanExpiredTrash() {
+        // 保留方法名兼容（已由 _restoreFromTrash 取代）
+        await this._restoreFromTrash();
+    }
+
+    /**
+     * 启动时遍历 keyvalue，恢复未过期的 trash（撤销窗口内刷新页面的兜底）
+     * 过期或损坏的 trash 条目会被删除
+     */
+    async _restoreFromTrash() {
+        let kvRecords;
+        try {
+            kvRecords = await DB.getAll('keyvalue');
+        } catch (e) {
+            console.warn('[DataStore] 读取 keyvalue 失败，跳过 trash 恢复:', e);
+            return;
+        }
+        const now = Date.now();
+        let restoredCount = 0;
+        for (const rec of kvRecords) {
+            if (!rec.key || !rec.key.startsWith('trash_')) continue;
+            const record = rec.value;
+            // 过期或损坏：删除并跳过
+            if (!record || typeof record.expiresAt !== 'number' || record.expiresAt < now) {
+                DB.remove(rec.key).catch(() => {});
+                continue;
+            }
+            const snapshot = record.snapshot;
+            let restored = false;
+            try {
+                if (rec.key.startsWith('trash_student_')) {
+                    restored = this.restoreStudent(snapshot);
+                } else if (rec.key.startsWith('trash_feedback_')) {
+                    restored = this.restoreFeedback(snapshot);
+                } else if (rec.key.startsWith('trash_quickreply_')) {
+                    restored = this.restoreQuickReply(snapshot);
+                }
+            } catch (e) {
+                console.warn(`[DataStore] 恢复 ${rec.key} 失败:`, e);
+            }
+            // 无论恢复成功与否，自动恢复后都清理该 trash 条目
+            DB.remove(rec.key).catch(() => {});
+            if (restored) {
+                restoredCount++;
+                console.warn(`[DataStore] 已自动恢复撤销窗口内的删除: ${rec.key}`);
+            }
+        }
+        if (restoredCount > 0) {
+            console.warn(`[DataStore] 共自动恢复 ${restoredCount} 项删除数据（来自上次刷新前的撤销窗口）`);
+            this._restoredFromTrashCount = restoredCount;
+        }
     }
 
     /**
@@ -171,8 +263,10 @@ class DataStore {
         // 从缓存和 IndexedDB 中删除反馈和模板
         delete this._feedbackCache[id];
         delete this._templatesCache[id];
-        DB.deleteRecord('feedback', id).catch(e => {});
-        DB.deleteRecord('templates', id).catch(e => {});
+        DB.deleteRecord('feedback', id).catch(e => console.warn('[DataStore] 删除反馈失败:', e));
+        DB.deleteRecord('templates', id).catch(e => console.warn('[DataStore] 删除模板失败:', e));
+        // 硬删除时清理可能残留的 trash
+        this._deleteTrash('student', id);
         return true;
     }
 
@@ -193,10 +287,13 @@ class DataStore {
         this.removeStudentSubjects(id);
         delete this._feedbackCache[id];
         delete this._templatesCache[id];
-        DB.deleteRecord('feedback', id).catch(e => {});
-        DB.deleteRecord('templates', id).catch(e => {});
+        DB.deleteRecord('feedback', id).catch(e => console.warn('[DataStore] 删除反馈失败:', e));
+        DB.deleteRecord('templates', id).catch(e => console.warn('[DataStore] 删除模板失败:', e));
+        // 持久化快照到 trash，防止撤销窗口内刷新页面导致数据永久丢失
+        const snapshot = { student, subjects, feedback, templates };
+        this._saveTrash('student', id, snapshot);
         // 返回快照
-        return { student, subjects, feedback, templates };
+        return snapshot;
     }
 
     /**
@@ -215,12 +312,16 @@ class DataStore {
         }
         if (snapshot.feedback) {
             this._feedbackCache[snapshot.student.id] = snapshot.feedback;
-            DB.putRecord('feedback', { studentId: snapshot.student.id, history: snapshot.feedback }).catch(e => {});
+            DB.putRecord('feedback', { studentId: snapshot.student.id, history: snapshot.feedback })
+                .catch(e => console.warn('[DataStore] 恢复反馈失败:', e));
         }
         if (snapshot.templates) {
             this._templatesCache[snapshot.student.id] = snapshot.templates;
-            DB.putRecord('templates', { studentId: snapshot.student.id, templates: snapshot.templates }).catch(e => {});
+            DB.putRecord('templates', { studentId: snapshot.student.id, templates: snapshot.templates })
+                .catch(e => console.warn('[DataStore] 恢复模板失败:', e));
         }
+        // 恢复成功后清理 trash
+        this._deleteTrash('student', snapshot.student.id);
         return true;
     }
 
@@ -286,6 +387,8 @@ class DataStore {
             this._studentSubjects[sid] = this._studentSubjects[sid].filter(subId => subId !== id);
         });
         this._saveStudentSubjects();
+        // 清理该科目的专属模板，避免孤儿数据
+        this.deleteSubjectTemplate(id);
         return true;
     }
 
@@ -363,6 +466,8 @@ class DataStore {
         DB.putRecord('feedback', { studentId, history: newHistory }).catch(e =>
             console.warn('[DataStore] 删除反馈失败:', e)
         );
+        // 硬删除时清理可能残留的 trash
+        this._deleteTrash('feedback', `${studentId}_${feedbackId}`);
         return true;
     }
 
@@ -377,8 +482,12 @@ class DataStore {
         if (!feedback) return null;
         const newHistory = history.filter(f => f.id !== feedbackId);
         this._feedbackCache[studentId] = newHistory;
-        DB.putRecord('feedback', { studentId, history: newHistory }).catch(e => {});
-        return { studentId, feedback };
+        DB.putRecord('feedback', { studentId, history: newHistory })
+            .catch(e => console.warn('[DataStore] 软删除反馈失败:', e));
+        const snapshot = { studentId, feedback };
+        // 持久化快照到 trash，防止撤销窗口内刷新页面导致数据永久丢失
+        this._saveTrash('feedback', `${studentId}_${feedbackId}`, snapshot);
+        return snapshot;
     }
 
     /**
@@ -392,7 +501,10 @@ class DataStore {
         if (history.some(f => f.id === snapshot.feedback.id)) return false;
         history.unshift(snapshot.feedback);
         this._feedbackCache[snapshot.studentId] = history;
-        DB.putRecord('feedback', { studentId: snapshot.studentId, history }).catch(e => {});
+        DB.putRecord('feedback', { studentId: snapshot.studentId, history })
+            .catch(e => console.warn('[DataStore] 恢复反馈失败:', e));
+        // 恢复成功后清理 trash
+        this._deleteTrash('feedback', `${snapshot.studentId}_${snapshot.feedback.id}`);
         return true;
     }
 
@@ -488,8 +600,11 @@ class DataStore {
 
     deleteQuickReply(replyId) {
         let replies = this.getQuickReplies();
+        const deleted = replies.find(r => r.id === replyId);
         replies = replies.filter(r => r.id !== replyId);
         this.saveQuickReplies(replies);
+        // 持久化到 trash，防止撤销窗口内刷新页面导致数据丢失
+        if (deleted) this._saveTrash('quickreply', replyId, deleted);
         return true;
     }
 
@@ -499,6 +614,8 @@ class DataStore {
         if (replies.some(r => r.id === reply.id)) return false;
         replies.push(reply);
         this.saveQuickReplies(replies);
+        // 恢复成功后清理 trash
+        this._deleteTrash('quickreply', reply.id);
         return true;
     }
 

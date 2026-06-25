@@ -274,7 +274,14 @@ const UI = {
     },
     
     showLoading(message) {
-        const overlay = document.createElement('div');
+        // 已存在 overlay 时仅更新消息，避免重复调用产生相同 id 的多个 overlay 导致残留无法移除
+        let overlay = document.getElementById('loading-overlay');
+        if (overlay) {
+            const msgEl = overlay.querySelector('#loading-message');
+            if (msgEl) msgEl.textContent = message;
+            return;
+        }
+        overlay = document.createElement('div');
         overlay.id = 'loading-overlay';
         overlay.setAttribute('role', 'alert');
         overlay.setAttribute('aria-live', 'assertive');

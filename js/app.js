@@ -458,12 +458,17 @@ class App {
             if (!student) {
                 student = this.currentGroup
                     .map(id => store.getStudentById(id))
-                    .find(s => s && (s.name.endsWith(data.studentName) || data.studentName.endsWith(s.name)));
+                    .find(s => s && (s.name.endsWith(data.studentName) && data.studentName.length >= 2));
             }
             if (student) {
-                const history = store.getFeedbackHistory(student.id);
-                if (history && history.length > 0) {
-                    this._currentFeedbackId = history[0].id; // 最新一条
+                // 优先使用本次生成时记录的 feedbackId，避免 addFeedback 失败时回退到上一节课
+                if (this._groupFeedbackIds && this._groupFeedbackIds[student.id]) {
+                    this._currentFeedbackId = this._groupFeedbackIds[student.id];
+                } else {
+                    const history = store.getFeedbackHistory(student.id);
+                    if (history && history.length > 0) {
+                        this._currentFeedbackId = history[0].id; // 最新一条
+                    }
                 }
             }
         }
@@ -486,7 +491,7 @@ class App {
                 if (!studentObj) {
                     studentObj = this.currentGroup
                         .map(id => store.getStudentById(id))
-                        .find(s => s && (s.name.endsWith(data.studentName) || data.studentName.endsWith(s.name)));
+                        .find(s => s && (s.name.endsWith(data.studentName) && data.studentName.length >= 2));
                 }
                 if (studentObj && studentObj.isTrial) trialPart = '试听';
             } else if (this.currentStudent && this.currentStudent.isTrial) {

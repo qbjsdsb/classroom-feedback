@@ -31,6 +31,12 @@ class BottomSheet {
     }
 
     show(html) {
+        // 移除上一次 show 残留的键盘监听，避免重复 show（未 close 再 show）导致监听器累积
+        if (this._keyHandler) {
+            document.removeEventListener('keydown', this._keyHandler, true);
+            this._keyHandler = null;
+        }
+
         const content = this.container.querySelector('.bottom-sheet-content');
         content.innerHTML = html;
         this.container.classList.add('active');

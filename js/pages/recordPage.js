@@ -788,6 +788,8 @@ class RecordPage {
         try {
             if (group && group.length > 0) {
                 // ===== 小组模式：为每位学生分别生成独立反馈 =====
+                // 初始化本次小组反馈ID映射，用于编辑持久化（避免覆盖到上一节课）
+                app._groupFeedbackIds = {};
                 const studentNames = group.map(id => store.getStudentById(id)?.name).filter(Boolean);
                 if (studentNames.length === 0) {
                     UI.showToast('未找到学生信息');
@@ -805,10 +807,10 @@ class RecordPage {
 
                 for (const fb of feedbacks) {
                     const groupStudents = group.map(id => store.getStudentById(id)).filter(Boolean);
-                    // 精确匹配 → 模糊匹配（仅允许AI省略姓氏，不允许短名匹配长名）
+                    // 精确匹配 → 模糊匹配（仅允许AI省略姓氏：全名.endsWith(AI名)，不允许短名匹配长名）
                     let matchedStudent = groupStudents.find(s => s.name === fb.studentName);
                     if (!matchedStudent) {
-                        matchedStudent = groupStudents.find(s => s.name.endsWith(fb.studentName) || fb.studentName.endsWith(s.name));
+                        matchedStudent = groupStudents.find(s => s.name.endsWith(fb.studentName) && fb.studentName.length >= 2);
                     }
                     if (matchedStudent) {
                         const saved = store.addFeedback(matchedStudent.id, {
@@ -816,8 +818,12 @@ class RecordPage {
                             transcript: storedTranscript,
                             feedback: fb.feedback
                         });
-                        // 保存第一个学生的反馈ID用于编辑持久化
-                        if (saved && !app._currentFeedbackId) app._currentFeedbackId = saved.id;
+                        // 记录每位学生本次反馈ID，用于编辑持久化（避免覆盖到上一节课）
+                        if (saved) {
+                            if (!app._groupFeedbackIds) app._groupFeedbackIds = {};
+                            app._groupFeedbackIds[matchedStudent.id] = saved.id;
+                            if (!app._currentFeedbackId) app._currentFeedbackId = saved.id;
+                        }
                     }
                 }
 
