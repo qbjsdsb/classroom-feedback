@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>课堂反馈助手</title>
-    <link rel="stylesheet" href="css/style.css?v=38">
+    <link rel="stylesheet" href="css/style.css?v=39">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icon.svg">
     <link rel="manifest" href="manifest.json">
@@ -20,21 +20,21 @@
         <!-- 桌面端侧边栏 -->
         <aside class="desktop-sidebar">
             <div class="sidebar-logo">📚 课堂反馈助手</div>
-            <nav class="sidebar-nav">
-                <button class="sidebar-nav-item active" data-page="students" onclick="app.navigate('students')">
-                    <span class="nav-icon">👥</span>
+            <nav class="sidebar-nav" aria-label="主导航">
+                <button class="sidebar-nav-item active" data-page="students" onclick="app.navigate('students')" aria-current="page">
+                    <span class="nav-icon" aria-hidden="true">👥</span>
                     <span>学生管理</span>
                 </button>
                 <button class="sidebar-nav-item" data-page="record" onclick="app.navigate('record')">
-                    <span class="nav-icon">🎙️</span>
+                    <span class="nav-icon" aria-hidden="true">🎙️</span>
                     <span>课堂录音</span>
                 </button>
                 <button class="sidebar-nav-item" data-page="history" onclick="app.navigate('history')">
-                    <span class="nav-icon">📋</span>
+                    <span class="nav-icon" aria-hidden="true">📋</span>
                     <span>历史反馈</span>
                 </button>
                 <button class="sidebar-nav-item" data-page="settings" onclick="app.openSettings()">
-                    <span class="nav-icon">⚙️</span>
+                    <span class="nav-icon" aria-hidden="true">⚙️</span>
                     <span>系统设置</span>
                 </button>
             </nav>
@@ -69,17 +69,17 @@
     </div>
 
     <!-- 底部导航（移动端） -->
-    <nav class="bottom-nav">
-        <button class="bottom-nav-item active" data-page="students" onclick="app.navigate('students')">
-            <span class="nav-icon">👥</span>
+    <nav class="bottom-nav" aria-label="主导航">
+        <button class="bottom-nav-item active" data-page="students" onclick="app.navigate('students')" aria-current="page">
+            <span class="nav-icon" aria-hidden="true">👥</span>
             <span>学生</span>
         </button>
         <button class="bottom-nav-item" data-page="record" onclick="app.navigate('record')">
-            <span class="nav-icon">🎙️</span>
+            <span class="nav-icon" aria-hidden="true">🎙️</span>
             <span>录音</span>
         </button>
         <button class="bottom-nav-item" data-page="settings" onclick="app.openSettings()">
-            <span class="nav-icon">⚙️</span>
+            <span class="nav-icon" aria-hidden="true">⚙️</span>
             <span>设置</span>
         </button>
     </nav>
@@ -148,12 +148,12 @@
     <script src="js/models.js?v=38"></script>
     <script src="js/recorder.js?v=46"></script>
     <script src="js/ai.js?v=37"></script>
-    <script src="js/ui.js?v=38"></script>
+    <script src="js/ui.js?v=39"></script>
     <script src="js/components/bottomSheet.js?v=33"></script>
     <script src="js/pages/studentsPage.js?v=35"></script>
     <script src="js/pages/studentFormPage.js?v=35"></script>
     <script src="js/pages/subjectSelectPage.js?v=33"></script>
-    <script src="js/pages/recordPage.js?v=40"></script>
+    <script src="js/pages/recordPage.js?v=41"></script>
     <script src="js/pages/historyPage.js?v=37"></script>
     <script src="js/pages/settingsPage.js?v=39"></script>
     <!-- Transformers.js：本地AI语音识别（Whisper模型），本地托管避免CDN不稳定 -->
@@ -162,7 +162,7 @@
             .then(m => { window.transformers = m; console.log('[Transformers.js] 加载成功'); })
             .catch(e => { console.warn('[Transformers.js] 加载失败，本地AI识别功能将不可用:', e); });
     </script>
-    <script src="js/app.js?v=38"></script>
+    <script src="js/app.js?v=39"></script>
     <script>
         // 注册 Service Worker 实现离线缓存
         if ('serviceWorker' in navigator) {

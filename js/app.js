@@ -108,11 +108,17 @@ class App {
     updateBottomNav(activePage) {
         // 更新底部导航（移动端）
         document.querySelectorAll('.bottom-nav-item').forEach(item => {
-            item.classList.toggle('active', item.dataset.page === activePage);
+            const isActive = item.dataset.page === activePage;
+            item.classList.toggle('active', isActive);
+            if (isActive) item.setAttribute('aria-current', 'page');
+            else item.removeAttribute('aria-current');
         });
         // 更新侧边栏导航（桌面端）
         document.querySelectorAll('.sidebar-nav-item').forEach(item => {
-            item.classList.toggle('active', item.dataset.page === activePage);
+            const isActive = item.dataset.page === activePage;
+            item.classList.toggle('active', isActive);
+            if (isActive) item.setAttribute('aria-current', 'page');
+            else item.removeAttribute('aria-current');
         });
     }
 
@@ -177,8 +183,8 @@ class App {
 
             this.feedbackContent.innerHTML = feedback.map((item, index) => `
                 <div class="feedback-section" data-index="${index}">
-                    <h3><span class="feedback-module-icon">${this._getModuleIcon(item.module)}</span>【${escapeHtml(item.module)}】</h3>
-                    <div class="feedback-content" contenteditable="true" data-index="${index}">${escapeHtml(item.content)}</div>
+                    <h3><span class="feedback-module-icon" aria-hidden="true">${this._getModuleIcon(item.module)}</span>【${escapeHtml(item.module)}】</h3>
+                    <div class="feedback-content" contenteditable="true" role="textbox" aria-multiline="true" aria-label="编辑 ${escapeHtml(item.module)} 模块内容" data-index="${index}">${escapeHtml(item.content)}</div>
                     <div class="feedback-edit-hint">💡 点击上方内容可直接编辑</div>
                 </div>
             `).join('');
@@ -519,8 +525,8 @@ class App {
 
             this.feedbackContent.innerHTML = data.feedback.map((item, idx) => `
                 <div class="feedback-section" data-index="${idx}">
-                    <h3><span class="feedback-module-icon">${this._getModuleIcon(item.module)}</span>【${escapeHtml(item.module)}】</h3>
-                    <div class="feedback-content" contenteditable="true" data-index="${idx}">${escapeHtml(item.content)}</div>
+                    <h3><span class="feedback-module-icon" aria-hidden="true">${this._getModuleIcon(item.module)}</span>【${escapeHtml(item.module)}】</h3>
+                    <div class="feedback-content" contenteditable="true" role="textbox" aria-multiline="true" aria-label="编辑 ${escapeHtml(item.module)} 模块内容" data-index="${idx}">${escapeHtml(item.content)}</div>
                     <div class="feedback-edit-hint">💡 点击上方内容可直接编辑</div>
                 </div>
             `).join('');

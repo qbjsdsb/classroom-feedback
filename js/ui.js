@@ -279,7 +279,7 @@ const UI = {
         overlay.setAttribute('role', 'alert');
         overlay.setAttribute('aria-live', 'assertive');
         overlay.innerHTML = `
-            <div class="loading-spinner"></div>
+            <div class="loading-spinner" aria-hidden="true"></div>
             <p id="loading-message" style="margin-top: 20px; color: var(--text-secondary); font-size: 0.95rem;">${message}</p>
         `;
         document.body.appendChild(overlay);

@@ -54,7 +54,7 @@ class RecordPage {
                         <div class="record-section">
                             <div style="display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:8px;">
                                 <button id="btn-record" class="record-btn">
-                                    <span class="record-icon">🎙️</span>
+                                    <span class="record-icon" aria-hidden="true">🎙️</span>
                                     <span class="record-text">开始录音</span>
                                 </button>
                                 <button id="btn-stop-record" class="stop-record-btn" style="display:none;">
