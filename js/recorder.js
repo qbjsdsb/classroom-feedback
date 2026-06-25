@@ -1358,17 +1358,19 @@ class Recorder {
             // 导致 transformers.js 跟随重定向后下载失败。
             // 解决方案：本地托管 whisper-tiny 模型（量化版约 41MB），完全离线加载
             if (window.transformers.env) {
-                // 启用本地模型加载
+                // 启用本地模型加载（浏览器环境默认 false，必须显式开启）
                 window.transformers.env.allowLocalModels = true;
-                // 仍然保留 remoteHost 作为 fallback（用于未来可能的远程模型）
-                window.transformers.env.remoteHost = 'https://hf-mirror.com';
-                // 指定本地模型路径为 vendor/whisper-tiny
-                // transformers.js 会从 {localModelPath}/{modelId}/ 加载文件
-                // 但我们的模型直接放在 vendor/whisper-tiny/ 下，所以用空 modelId
-                // 实际做法：用相对路径 './vendor/' 作为 localModelPath
+                // 关闭远程模型下载：彻底杜绝任何代码路径去打 hf-mirror.com
+                // （hf-mirror 对 onnx 会 302 重定向到 cas-bridge.xethub.hf.co，
+                // 该 xet CDN 在国内被墙，浏览器无法访问，下载必失败）
+                // 配合 local_files_only:true，所有模型文件只能从本地 /vendor/ 加载
+                window.transformers.env.allowRemoteModels = false;
+                // 指定本地模型路径为 /vendor，transformers.js 会从
+                // {localModelPath}/{modelId}/ 加载文件，即 /vendor/whisper-tiny/
                 window.transformers.env.localModelPath = '/vendor';
                 console.log('[Whisper] env.localModelPath:', window.transformers.env.localModelPath);
                 console.log('[Whisper] env.allowLocalModels:', window.transformers.env.allowLocalModels);
+                console.log('[Whisper] env.allowRemoteModels:', window.transformers.env.allowRemoteModels);
             }
 
             // 配置 ONNX Runtime WASM 文件加载路径

@@ -1,5 +1,5 @@
 // Service Worker - 课堂反馈助手离线缓存
-const CACHE_NAME = 'classroom-feedback-v1.9.49';
+const CACHE_NAME = 'classroom-feedback-v1.9.50';
 
 // 需要缓存的静态资源（同时包含 /tutorial 兼容 Cloudflare Pretty URL）
 const STATIC_ASSETS = [
@@ -29,6 +29,7 @@ const STATIC_ASSETS = [
     // （xet CDN 在国内被墙，浏览器无法访问）
     '/vendor/whisper-tiny/config.json',
     '/vendor/whisper-tiny/generation_config.json',
+    '/vendor/whisper-tiny/preprocessor_config.json',
     '/vendor/whisper-tiny/tokenizer.json',
     '/vendor/whisper-tiny/tokenizer_config.json',
     '/vendor/whisper-tiny/special_tokens_map.json',
