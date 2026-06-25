@@ -40,6 +40,7 @@ class Recorder {
         this._autoCommitted = false; // 自动commit一次性标志（每次onstart重置，防止重复触发大字符串拼接）
         this._isHealthCheckRestart = false; // 健康检查触发的重启标志（不消耗restartCount配额）
         this._startTimeout = null; // onstart超时检测定时器ID（start()后5秒未触发onstart则重建）
+        this._connectingHintTimeout = null; // 连接进度提示定时器ID（启动期间的UI反馈）
         this._isStarting = false; // 防重入锁
         this._manualStop = false; // 手动停止标志，防止 onresult/onend 重复写入
         this._userIntendsToRecord = false; // 用户意图录音（重启期间也保持true，用于健康检查）
@@ -252,6 +253,11 @@ class Recorder {
             if (this._startTimeout) {
                 clearTimeout(this._startTimeout);
                 this._startTimeout = null;
+            }
+            // 清除连接进度提示定时器
+            if (this._connectingHintTimeout) {
+                clearTimeout(this._connectingHintTimeout);
+                this._connectingHintTimeout = null;
             }
             this.isRecording = true;
             this.shouldRestart = true;
@@ -594,8 +600,27 @@ class Recorder {
         if (this._startTimeout) {
             clearTimeout(this._startTimeout);
         }
+        // 连接进度提示：闲置后首次录音时，Web Speech API 需重新连接 Google 服务器
+        // onstart 触发可能要数秒，期间给用户进度反馈避免以为卡死
+        if (!this.isRecording && this._userIntendsToRecord) {
+            const statusEl = document.querySelector('.record-status');
+            if (statusEl) {
+                statusEl.textContent = '正在连接语音识别服务...';
+                // 3秒后若仍未启动，提示网络较慢
+                this._connectingHintTimeout = setTimeout(() => {
+                    if (!this.isRecording && this._userIntendsToRecord) {
+                        const el = document.querySelector('.record-status');
+                        if (el) el.textContent = '连接较慢，正在重试...';
+                    }
+                }, 3000);
+            }
+        }
         this._startTimeout = setTimeout(() => {
             this._startTimeout = null;
+            if (this._connectingHintTimeout) {
+                clearTimeout(this._connectingHintTimeout);
+                this._connectingHintTimeout = null;
+            }
             // 仅在 start() 成功但 onstart 未触发时才重建
             // isRecording=false 说明 onstart 没有触发，_userIntendsToRecord=true 说明用户仍在录音
             if (!this.isRecording && this._userIntendsToRecord) {
@@ -756,15 +781,19 @@ class Recorder {
     }
 
     // ========== 检查麦克风权限 ==========
-
+    // 优化：避免重复 getUserMedia 调用（旧代码 checkPermission 调用一次，
+    // start() 又调用一次，第二次因第一次刚释放设备而等待）
+    // 改为只查询权限状态，不实际获取流。getUserMedia 在 start() 中执行一次即可
     async checkPermission() {
         // 检查浏览器是否支持 getUserMedia
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
             return { granted: false, reason: 'not-supported', error: '浏览器不支持麦克风访问' };
         }
-        
-        try {
-            if (navigator.permissions && navigator.permissions.query) {
+
+        // 仅查询权限状态，不获取流（避免重复获取/释放设备导致的延迟）
+        // 注意：permissions.query 在部分浏览器上较慢，但比 getUserMedia 快
+        if (navigator.permissions && navigator.permissions.query) {
+            try {
                 const result = await navigator.permissions.query({ name: 'microphone' });
                 if (result.state === 'denied') {
                     return { granted: false, reason: 'denied' };
@@ -772,21 +801,15 @@ class Recorder {
                 if (result.state === 'prompt') {
                     return { granted: false, reason: 'prompt' };
                 }
+                // granted：已授权，继续返回 granted（getUserMedia 在 start 中执行）
+            } catch (e) {
+                // permissions.query 不支持时，走 getUserMedia 探测
             }
-            
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            stream.getTracks().forEach(t => t.stop());
-            this.permissionChecked = true;
-            return { granted: true };
-        } catch (err) {
-            if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
-                return { granted: false, reason: 'denied' };
-            }
-            if (err.name === 'NotFoundError') {
-                return { granted: false, reason: 'no-device' };
-            }
-            return { granted: false, reason: 'unknown', error: err.message };
         }
+
+        // 已授权或无法查询权限状态：返回 granted，实际 getUserMedia 在 start() 中执行
+        this.permissionChecked = true;
+        return { granted: true };
     }
 
     startTimer() {
@@ -975,32 +998,36 @@ class Recorder {
 
         this._isStarting = true;
         try {
-            // 先检查权限
+            // 即时反馈：点击后立即显示"正在启动"，避免用户以为卡死
+            // Web Speech API 的 recognition.start() 是异步的，onstart 触发可能要几秒
+            // （浏览器闲置后到 Google 语音服务器的连接断开，需重新建立）
+            const statusEl = document.querySelector('.record-status');
+            if (statusEl) statusEl.textContent = '正在启动语音识别...';
+
+            // 先检查权限（仅查询状态，不获取流，避免重复 getUserMedia）
             const perm = await this.checkPermission();
             if (!perm.granted) {
                 if (perm.reason === 'denied') {
                     this._log('error', '麦克风权限被拒绝(start)');
                     UI.showToast('麦克风权限被拒绝，请在浏览器设置中允许访问');
                     this.showPermissionHelp();
-                    return;
                 } else if (perm.reason === 'no-device') {
                     this._log('error', '未检测到麦克风设备');
                     UI.showToast('未检测到麦克风设备');
-                    return;
                 } else if (perm.reason === 'not-supported') {
                     this._log('error', '浏览器不支持麦克风访问');
                     UI.showToast('当前浏览器不支持麦克风访问，请使用 Edge、Chrome 或 Safari 浏览器');
-                    return;
                 } else if (perm.reason === 'prompt') {
                     // 继续尝试，会弹出权限请求
                 } else {
                     this._log('error', '无法访问麦克风', perm.error || '未知错误');
                     UI.showToast('无法访问麦克风：' + (perm.error || '未知错误'));
-                    return;
                 }
+                if (perm.reason !== 'prompt') return;
             }
 
             try {
+                // getUserMedia 同时完成权限确认和设备获取（合并为一次调用）
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 stream.getTracks().forEach(t => t.stop());
 
@@ -1683,6 +1710,11 @@ class Recorder {
             clearTimeout(this._startTimeout);
             this._startTimeout = null;
         }
+        // 清理连接进度提示定时器
+        if (this._connectingHintTimeout) {
+            clearTimeout(this._connectingHintTimeout);
+            this._connectingHintTimeout = null;
+        }
         // 清理可能排队的重启定时器
         if (this._restartTimeout) {
             clearTimeout(this._restartTimeout);
@@ -1786,6 +1818,11 @@ class Recorder {
         if (this._startTimeout) {
             clearTimeout(this._startTimeout);
             this._startTimeout = null;
+        }
+        // 清理连接进度提示定时器
+        if (this._connectingHintTimeout) {
+            clearTimeout(this._connectingHintTimeout);
+            this._connectingHintTimeout = null;
         }
 
         // 清理可能排队的重启定时器
