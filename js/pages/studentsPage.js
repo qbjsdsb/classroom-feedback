@@ -27,15 +27,19 @@ class StudentsPage {
 
             <div class="search-section">
                 <div class="search-bar">
-                    <span class="search-icon">🔍</span>
-                    <input type="text" id="student-search"
-                           placeholder="搜索学生姓名..."
+                    <span class="search-icon" aria-hidden="true">🔍</span>
+                    <label for="student-search" class="sr-only">搜索学生姓名</label>
+                    <input type="text" id="student-search" name="student-search"
+                           placeholder="搜索学生姓名…"
+                           aria-label="搜索学生姓名"
+                           autocomplete="off"
                            value="${escapeHtml(this.searchQuery)}">
-                    ${this.searchQuery ? '<button class="clear-search">✕</button>' : ''}
+                    ${this.searchQuery ? '<button class="clear-search" aria-label="清除搜索">✕</button>' : ''}
                 </div>
                 ${allGrades.length > 0 ? `
                 <div class="grade-filter">
-                    <select id="grade-filter">
+                    <label for="grade-filter" class="sr-only">按年级筛选</label>
+                    <select id="grade-filter" name="grade-filter" aria-label="按年级筛选">
                         <option value="">全部年级</option>
                         ${allGrades.map(g => `<option value="${escapeHtml(g)}" ${this.selectedGrade === g ? 'selected' : ''}>${escapeHtml(g)}</option>`).join('')}
                     </select>
@@ -136,10 +140,14 @@ class StudentsPage {
         const subjects = store.getStudentSubjects(student.id);
 
         return `
-            <div class="student-card ${isSelected ? 'selected' : ''}"
+            <article class="student-card ${isSelected ? 'selected' : ''}"
                  data-id="${student.id}"
-                 onclick="studentsPage.onStudentClick('${student.id}')">
-                <div class="student-avatar" style="background: ${this._getAvatarColor(student.name)}">
+                 role="button"
+                 tabindex="0"
+                 aria-label="${escapeHtml(student.name)}，${isSelected ? '已选中' : '未选中'}${student.grade ? '，' + escapeHtml(student.grade) : ''}"
+                 onclick="studentsPage.onStudentClick('${student.id}')"
+                 onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();studentsPage.onStudentClick('${student.id}')}">
+                <div class="student-avatar" style="background: ${this._getAvatarColor(student.name)}" aria-hidden="true">
                     ${escapeHtml(student.name.charAt(0))}
                 </div>
                 <div class="student-info">
@@ -149,13 +157,13 @@ class StudentsPage {
                     </div>
                 </div>
                 ${this.isGroupMode ? `
-                    <div class="select-indicator">${isSelected ? '✓' : ''}</div>
+                    <div class="select-indicator" aria-hidden="true">${isSelected ? '✓' : ''}</div>
                 ` : `
-                    <button class="student-menu-btn" onclick="event.stopPropagation(); studentsPage.showMenu('${student.id}')" aria-label="学生操作菜单">
+                    <button class="student-menu-btn" onclick="event.stopPropagation(); studentsPage.showMenu('${student.id}')" aria-label="${escapeHtml(student.name)} 的操作菜单">
                         ⋮
                     </button>
                 `}
-            </div>
+            </article>
         `;
     }
 

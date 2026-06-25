@@ -35,7 +35,7 @@ class RecordPage {
                 <div class="session-info">
                     <div class="student-name">${headerInfo}</div>
                     <div style="display:flex;align-items:center;gap:6px;">
-                        <div class="subject-name subject-switch" style="color: ${subject?.color || 'var(--text-muted)'};font-weight:500;" onclick="recordPage.showSubjectSwitcher()">${subtitle} ▾</div>
+                        <button type="button" class="subject-name subject-switch" style="color: ${subject?.color || 'var(--text-muted)'};font-weight:500;background:none;border:none;cursor:pointer;padding:0;font:inherit;" onclick="recordPage.showSubjectSwitcher()" aria-label="切换科目，当前 ${escapeHtml(subtitle)}">${subtitle} ▾</button>
                         <button class="text-btn" onclick="recordPage.showPromptTemplatePicker()" style="font-size:0.8rem;padding:2px 6px;">📋 选择模板</button>
                     </div>
                 </div>
@@ -68,12 +68,12 @@ class RecordPage {
                                 <label for="audio-file-import" style="color:var(--primary);font-size:0.85rem;cursor:pointer;text-decoration:underline;">
                                     📁 导入录音文件（语音转文字）
                                 </label>
-                                <input type="file" id="audio-file-import" accept="audio/*" style="display:none;">
+                                <input type="file" id="audio-file-import" name="audio-file-import" accept="audio/*" aria-label="导入录音文件" style="display:none;">
                                 <div id="audio-import-progress" style="display:none;margin-top:8px;">
                                     <div style="background:var(--border);border-radius:10px;height:6px;overflow:hidden;">
                                         <div id="audio-import-bar" style="background:var(--primary);height:100%;width:0%;transition:width 0.3s;border-radius:10px;"></div>
                                     </div>
-                                    <p id="audio-import-status" style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">准备中...</p>
+                                    <p id="audio-import-status" style="font-size:0.8rem;color:var(--text-muted);margin-top:4px;">准备中…</p>
                                 </div>
                             </div>
                         </div>
@@ -110,14 +110,15 @@ class RecordPage {
                     <div class="record-page-right">
                         <div class="transcript-section">
                             <div class="transcript-header">
-                                <label>📝 课堂内容（可直接输入或编辑）</label>
+                                <label for="transcript">📝 课堂内容（可直接输入或编辑）</label>
                                 <div>
                                     <button class="clear-btn" onclick="recordPage.saveAsTemplate()" style="margin-right:8px;">保存为常用点评</button>
-                                    <button class="clear-btn" onclick="recordPage.clearTranscript()">清空</button>
+                                    <button class="clear-btn" onclick="recordPage.clearTranscript()" aria-label="清空课堂内容">清空</button>
                                 </div>
                             </div>
                             ${this.renderNameInsertButtons()}
-                            <textarea id="transcript" placeholder="请在此输入本节课的课堂内容，例如：&#10;• 今天复习了二次函数&#10;• 学生掌握了配方法&#10;• 作业是练习册第15页&#10;&#10;建议使用电脑端浏览器操作，输入更方便...">${escapeHtml(savedText)}</textarea>
+                            <textarea id="transcript" name="transcript" aria-label="课堂内容"
+                                placeholder="请在此输入本节课的课堂内容，例如：&#10;• 今天复习了二次函数&#10;• 学生掌握了配方法&#10;• 作业是练习册第15页&#10;&#10;建议使用电脑端浏览器操作，输入更方便…">${escapeHtml(savedText)}</textarea>
                             <div class="transcript-footer">
                                 <span class="word-count">字数：<strong id="word-count">0</strong></span>
                             </div>
@@ -165,9 +166,12 @@ class RecordPage {
         return `
             <div class="quick-reply-tags">
                 ${templates.map((t, i) => `
-                    <div class="template-item" data-tpl-insert-id="${escapeHtml(t.id)}" title="点击插入">
+                    <div class="template-item" data-tpl-insert-id="${escapeHtml(t.id)}" title="点击插入"
+                         role="button" tabindex="0"
+                         aria-label="插入常用点评：${escapeHtml(t.content.substring(0, 50))}"
+                         onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click()}">
                         <span class="template-content">${escapeHtml(t.content)}</span>
-                        <button class="template-delete" data-tpl-id="${escapeHtml(t.id)}">删除</button>
+                        <button class="template-delete" data-tpl-id="${escapeHtml(t.id)}" aria-label="删除此常用点评">删除</button>
                     </div>
                 `).join('')}
             </div>

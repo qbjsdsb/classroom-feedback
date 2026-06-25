@@ -25,22 +25,27 @@ class SettingsPage {
                 <section class="settings-group">
                     <h3 style="font-size:1.05rem;font-weight:700;">🔑 API Key</h3>
                     <div class="form-group">
-                        <input type="password" id="api-key" placeholder="请输入您的 DeepSeek API Key"
+                        <label for="api-key" class="sr-only">API Key</label>
+                        <input type="password" id="api-key" name="api-key" placeholder="请输入您的 DeepSeek API Key…"
+                               autocomplete="off"
+                               aria-label="API Key"
                                value="${escapeHtml(apiKey) || ''}">
                         <div style="display:flex;gap:8px;margin-top:8px;">
-                            <button type="button" id="btn-toggle-key" class="secondary-btn" style="font-size:0.8rem;padding:6px 10px;">
+                            <button type="button" id="btn-toggle-key" class="secondary-btn" style="font-size:0.8rem;padding:6px 10px;" aria-label="显示或隐藏 API Key">
                                 👁️ 显示/隐藏
                             </button>
-                            <a href="#" id="apikey-help" style="color:var(--primary);font-size:0.8rem;text-decoration:none;font-weight:500;align-self:center;">
+                            <button type="button" id="apikey-help" style="background:none;border:none;color:var(--primary);font-size:0.8rem;text-decoration:none;font-weight:500;align-self:center;cursor:pointer;padding:0;font:inherit;" aria-label="如何获取 API Key">
                                 ❓ 如何获取？
-                            </a>
+                            </button>
                         </div>
-                        <div id="api-key-status"></div>
+                        <div id="api-key-status" aria-live="polite" aria-atomic="true"></div>
                         <details class="advanced-settings" style="margin-top:10px;">
                             <summary style="font-size:0.85rem;color:var(--text-muted);cursor:pointer;">高级设置</summary>
                             <div class="advanced-content" style="margin-top:8px;">
-                                <label style="font-size:0.85rem;">API 基础地址（可选）</label>
-                                <input type="text" id="api-base-url" placeholder="https://api.deepseek.com"
+                                <label for="api-base-url" style="font-size:0.85rem;display:block;margin-bottom:4px;">API 基础地址（可选）</label>
+                                <input type="text" id="api-base-url" name="api-base-url" placeholder="https://api.deepseek.com"
+                                       autocomplete="off"
+                                       aria-label="API 基础地址"
                                        value="${escapeHtml(Storage.getApiBaseUrl()) || ''}" style="font-size:0.9rem;padding:8px;">
                                 <p class="hint-text" style="font-size:0.75rem;margin-top:4px;">使用 DeepSeek 可留空；使用兼容接口请填写完整地址</p>
                             </div>
@@ -171,12 +176,13 @@ class SettingsPage {
 
                     <div class="form-group compact" style="margin-top:8px;">
                         <label class="toggle-label">
-                            <input type="checkbox" id="use-custom-date" ${style.useCustomDate ? 'checked' : ''}>
-                            <span class="toggle-switch"></span>
+                            <input type="checkbox" id="use-custom-date" name="use-custom-date" ${style.useCustomDate ? 'checked' : ''}>
+                            <span class="toggle-switch" aria-hidden="true"></span>
                             <span>使用自定义日期</span>
                         </label>
                         <div class="custom-date-input" style="margin-top:6px;${style.useCustomDate ? '' : 'display:none;'}">
-                            <input type="date" id="custom-date" value="${style.customDate || ''}">
+                            <label for="custom-date" class="sr-only">自定义日期</label>
+                            <input type="date" id="custom-date" name="custom-date" aria-label="自定义日期" value="${style.customDate || ''}">
                         </div>
                     </div>
 
@@ -212,8 +218,9 @@ class SettingsPage {
 
                     <!-- 临时备注 -->
                     <div class="form-group" style="margin-top:16px;">
-                        <label style="font-size:0.85rem;">临时备注（每次生成反馈时追加）</label>
-                        <textarea id="custom-prompt" placeholder="例如：本次课特别强调计算准确性..."
+                        <label for="custom-prompt" style="font-size:0.85rem;display:block;margin-bottom:4px;">临时备注（每次生成反馈时追加）</label>
+                        <textarea id="custom-prompt" name="custom-prompt" placeholder="例如：本次课特别强调计算准确性…"
+                            aria-label="临时备注，每次生成反馈时追加"
                             style="width:100%;min-height:60px;padding:10px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.9rem;font-family:inherit;resize:vertical;margin-top:4px;">${style.customPrompt || ''}</textarea>
                     </div>
 
@@ -300,14 +307,18 @@ class SettingsPage {
             return `
                 <div class="module-length-item" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;padding:8px;background:var(--bg);border-radius:var(--radius-sm);">
                     <span style="min-width:80px;font-size:0.9rem;">${escapeHtml(m.name)}</span>
-                    <div style="display:flex;gap:8px;flex:1;">
-                        <input type="number" class="module-min-length" data-module="${escapeHtml(m.name)}" value="${len.min}" min="10" max="1000"
+                    <div style="display:flex;gap:8px;flex:1;align-items:center;">
+                        <label for="module-min-${i}" class="sr-only">${escapeHtml(m.name)} 最小字数</label>
+                        <input type="number" id="module-min-${i}" class="module-min-length" data-module="${escapeHtml(m.name)}" value="${len.min}" min="10" max="1000" inputmode="numeric"
+                            aria-label="${escapeHtml(m.name)} 最小字数"
                             style="flex:1;padding:6px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.85rem;">
-                        <span style="color:var(--text-muted);font-size:0.85rem;align-self:center;">-</span>
-                        <input type="number" class="module-max-length" data-module="${escapeHtml(m.name)}" value="${len.max}" min="50" max="5000"
+                        <span style="color:var(--text-muted);font-size:0.85rem;" aria-hidden="true">-</span>
+                        <label for="module-max-${i}" class="sr-only">${escapeHtml(m.name)} 最大字数</label>
+                        <input type="number" id="module-max-${i}" class="module-max-length" data-module="${escapeHtml(m.name)}" value="${len.max}" min="50" max="5000" inputmode="numeric"
+                            aria-label="${escapeHtml(m.name)} 最大字数"
                             style="flex:1;padding:6px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:0.85rem;">
                     </div>
-                    <span style="font-size:0.75rem;color:var(--text-muted);">字</span>
+                    <span style="font-size:0.75rem;color:var(--text-muted);" aria-hidden="true">字</span>
                 </div>
             `;
         }).join('');
@@ -478,12 +489,12 @@ class SettingsPage {
             <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">选择一个模板，其 Prompt 将追加到该科目的专属模板中</p>
             <div class="template-apply-list">
                 ${templates.map(t => `
-                    <div class="template-apply-item" data-template-id="${escapeHtml(t.id)}" style="display:flex;align-items:center;gap:10px;padding:12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;cursor:pointer;transition:background 0.15s;">
+                    <button type="button" class="template-apply-item" data-template-id="${escapeHtml(t.id)}" style="display:flex;align-items:center;gap:10px;padding:12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;cursor:pointer;transition:background 0.15s;background:var(--surface);width:100%;text-align:left;font:inherit;color:inherit;" aria-label="应用模板 ${escapeHtml(t.name)}">
                         <span style="flex:1;">
                             <span style="font-weight:500;">${escapeHtml(t.name)}</span>
                             <span style="font-size:0.75rem;color:var(--text-muted);margin-left:6px;">${escapeHtml(t.category)}</span>
                         </span>
-                    </div>
+                    </button>
                 `).join('')}
             </div>
         `);
@@ -643,11 +654,11 @@ class SettingsPage {
                 ${subjects.map(s => {
                     const existing = store.getSubjectTemplate(s.id);
                     return `
-                        <div class="subject-apply-item" data-subject-id="${escapeHtml(s.id)}" style="display:flex;align-items:center;gap:10px;padding:12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;cursor:pointer;transition:background 0.15s;">
-                            <span class="color-dot" style="background:${escapeHtml(s.color)};"></span>
+                        <button type="button" class="subject-apply-item" data-subject-id="${escapeHtml(s.id)}" style="display:flex;align-items:center;gap:10px;padding:12px;border:1.5px solid var(--border);border-radius:var(--radius-sm);margin-bottom:8px;cursor:pointer;transition:background 0.15s;background:var(--surface);width:100%;text-align:left;font:inherit;color:inherit;" aria-label="为科目 ${escapeHtml(s.name)} 选择模板">
+                            <span class="color-dot" style="background:${escapeHtml(s.color)};" aria-hidden="true"></span>
                             <span style="flex:1;font-weight:500;">${escapeHtml(s.name)}</span>
                             ${existing && existing.prompt ? '<span style="font-size:0.75rem;color:var(--warning);">已有模板</span>' : '<span style="font-size:0.75rem;color:var(--success);">未配置</span>'}
-                        </div>
+                        </button>
                     `;
                 }).join('')}
             </div>
@@ -1023,7 +1034,8 @@ class SettingsPage {
             <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-light);">
                 <h3 style="margin:0;font-size:1.1rem;">📋 录音日志 <span style="font-size:0.8rem;color:var(--text-muted);font-weight:normal;">(${totalLogs}条)</span></h3>
                 <div style="display:flex;gap:8px;align-items:center;">
-                    <select id="log-level-filter" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.8rem;background:var(--bg);color:var(--text);">
+                    <label for="log-level-filter" class="sr-only">按日志级别筛选</label>
+                    <select id="log-level-filter" name="log-level-filter" aria-label="按日志级别筛选" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:0.8rem;background:var(--bg);color:var(--text);">
                         <option value="all">全部</option>
                         <option value="error">错误</option>
                         <option value="warn">警告</option>

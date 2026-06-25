@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>课堂反馈助手</title>
-    <link rel="stylesheet" href="css/style.css?v=37">
+    <link rel="stylesheet" href="css/style.css?v=38">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icon.svg">
     <link rel="manifest" href="manifest.json">
@@ -14,6 +14,8 @@
     <meta name="color-scheme" content="light dark">
 </head>
 <body>
+    <!-- 跳到主内容（无障碍快捷链接，键盘用户可跳过侧边栏导航） -->
+    <a href="#main-content" class="skip-link">跳到主内容</a>
     <div class="desktop-layout">
         <!-- 桌面端侧边栏 -->
         <aside class="desktop-sidebar">
@@ -42,7 +44,7 @@
             </div>
         </aside>
 
-        <div class="desktop-main">
+        <div class="desktop-main" id="main-content">
             <!-- 页面容器 -->
             <div id="pages-container">
                 <!-- 学生列表页 -->
@@ -83,10 +85,10 @@
     </nav>
 
     <!-- 反馈结果弹窗 -->
-    <div id="result-modal" class="modal">
+    <div id="result-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="result-modal-title">
         <div class="modal-content">
             <header>
-                <h2>📋 课堂反馈</h2>
+                <h2 id="result-modal-title">📋 课堂反馈</h2>
                 <button class="close-btn" aria-label="关闭">&times;</button>
             </header>
             <div class="modal-body">
@@ -109,10 +111,10 @@
     </div>
 
     <!-- API Key 帮助弹窗 -->
-    <div id="help-modal" class="modal">
+    <div id="help-modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="help-modal-title">
         <div class="modal-content">
             <header>
-                <h2>如何获取 API Key</h2>
+                <h2 id="help-modal-title">如何获取 API Key</h2>
                 <button class="close-btn" aria-label="关闭">&times;</button>
             </header>
             <div class="modal-body">
@@ -136,7 +138,7 @@
     </div>
 
     <!-- 底部弹窗容器 -->
-    <div id="bottom-sheet" class="bottom-sheet">
+    <div id="bottom-sheet" class="bottom-sheet" role="dialog" aria-modal="true" aria-label="操作面板">
         <div class="bottom-sheet-content"></div>
     </div>
 
@@ -146,14 +148,14 @@
     <script src="js/models.js?v=38"></script>
     <script src="js/recorder.js?v=45"></script>
     <script src="js/ai.js?v=37"></script>
-    <script src="js/ui.js?v=37"></script>
-    <script src="js/components/bottomSheet.js?v=32"></script>
-    <script src="js/pages/studentsPage.js?v=34"></script>
-    <script src="js/pages/studentFormPage.js?v=34"></script>
+    <script src="js/ui.js?v=38"></script>
+    <script src="js/components/bottomSheet.js?v=33"></script>
+    <script src="js/pages/studentsPage.js?v=35"></script>
+    <script src="js/pages/studentFormPage.js?v=35"></script>
     <script src="js/pages/subjectSelectPage.js?v=33"></script>
-    <script src="js/pages/recordPage.js?v=39"></script>
+    <script src="js/pages/recordPage.js?v=40"></script>
     <script src="js/pages/historyPage.js?v=37"></script>
-    <script src="js/pages/settingsPage.js?v=38"></script>
+    <script src="js/pages/settingsPage.js?v=39"></script>
     <!-- Transformers.js：本地AI语音识别（Whisper模型），本地托管避免CDN不稳定 -->
     <script type="module">
         import('./vendor/transformers.min.js')

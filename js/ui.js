@@ -138,6 +138,9 @@ const UI = {
         overlay.className = 'confirm-overlay';
         const dialog = document.createElement('div');
         dialog.className = 'confirm-dialog';
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        dialog.setAttribute('aria-label', '确认操作');
         dialog.innerHTML = `
             <p class="confirm-message">${escapeHtml(message)}</p>
             <div class="confirm-actions">
@@ -148,10 +151,32 @@ const UI = {
         overlay.appendChild(dialog);
         document.body.appendChild(overlay);
 
+        // 记录打开前焦点，关闭时还原
+        const lastFocused = document.activeElement;
+
         const close = () => {
             overlay.classList.remove('show');
+            document.removeEventListener('keydown', keyHandler, true);
             setTimeout(() => overlay.remove(), 250);
+            // 还原焦点
+            if (lastFocused && typeof lastFocused.focus === 'function') {
+                lastFocused.focus();
+            }
         };
+
+        // Escape 关闭 + Enter 确认
+        const keyHandler = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                close();
+            } else if (e.key === 'Enter' && document.activeElement !== dialog.querySelector('.confirm-cancel-btn')) {
+                // Enter 默认触发确认（除非焦点在取消按钮上）
+                e.preventDefault();
+                close();
+                if (onConfirm) onConfirm();
+            }
+        };
+        document.addEventListener('keydown', keyHandler, true);
 
         dialog.querySelector('.confirm-cancel-btn').addEventListener('click', close);
         dialog.querySelector('.confirm-ok-btn').addEventListener('click', () => {
@@ -165,6 +190,8 @@ const UI = {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 overlay.classList.add('show');
+                // 聚焦确认按钮，便于键盘用户快速操作
+                dialog.querySelector('.confirm-ok-btn').focus();
             });
         });
     },
@@ -180,10 +207,13 @@ const UI = {
         overlay.className = 'confirm-overlay';
         const dialog = document.createElement('div');
         dialog.className = 'confirm-dialog';
+        dialog.setAttribute('role', 'dialog');
+        dialog.setAttribute('aria-modal', 'true');
+        dialog.setAttribute('aria-label', '输入确认');
         dialog.innerHTML = `
             <p class="confirm-message">${escapeHtml(message)}</p>
-            <p style="font-size:0.85rem;color:var(--text-muted);margin:8px 0;">请输入 <strong style="color:var(--danger);">${escapeHtml(confirmText)}</strong> 以确认操作</p>
-            <input type="text" class="confirm-input" placeholder="${escapeHtml(confirmText)}" autocomplete="off"
+            <label for="confirm-input-field" style="display:block;font-size:0.85rem;color:var(--text-muted);margin:8px 0;">请输入 <strong style="color:var(--danger);">${escapeHtml(confirmText)}</strong> 以确认操作</label>
+            <input type="text" id="confirm-input-field" class="confirm-input" placeholder="${escapeHtml(confirmText)}" autocomplete="off" name="confirm-input"
                 style="width:100%;padding:10px 12px;border:2px solid var(--border);border-radius:var(--radius-sm);font-size:1rem;margin:8px 0;box-sizing:border-box;background:var(--bg);color:var(--text);">
             <div class="confirm-actions">
                 <button class="confirm-cancel-btn">取消</button>
@@ -192,6 +222,9 @@ const UI = {
         `;
         overlay.appendChild(dialog);
         document.body.appendChild(overlay);
+
+        // 记录打开前焦点，关闭时还原
+        const lastFocused = document.activeElement;
 
         const input = dialog.querySelector('.confirm-input');
         const okBtn = dialog.querySelector('.confirm-ok-btn');
@@ -206,8 +239,21 @@ const UI = {
 
         const close = () => {
             overlay.classList.remove('show');
+            document.removeEventListener('keydown', keyHandler, true);
             setTimeout(() => overlay.remove(), 250);
+            if (lastFocused && typeof lastFocused.focus === 'function') {
+                lastFocused.focus();
+            }
         };
+
+        // Escape 关闭
+        const keyHandler = (e) => {
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                close();
+            }
+        };
+        document.addEventListener('keydown', keyHandler, true);
 
         dialog.querySelector('.confirm-cancel-btn').addEventListener('click', close);
         okBtn.addEventListener('click', () => {

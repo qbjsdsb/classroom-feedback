@@ -22,14 +22,16 @@ class StudentFormPage {
 
             <div class="form-section">
                 <div class="form-group">
-                    <label>学生姓名 *</label>
-                    <input type="text" id="student-name" placeholder="请输入学生姓名"
+                    <label for="student-name">学生姓名 *</label>
+                    <input type="text" id="student-name" name="student-name" placeholder="请输入学生姓名…"
+                           autocomplete="off"
+                           aria-label="学生姓名"
                            value="${student ? escapeHtml(student.name) : ''}">
                 </div>
 
                 <div class="form-group">
-                    <label>年级</label>
-                    <select id="student-grade">
+                    <label for="student-grade">年级</label>
+                    <select id="student-grade" name="student-grade" aria-label="年级">
                         <option value="">未选择</option>
                         <option value="一年级" ${student?.grade === '一年级' ? 'selected' : ''}>一年级</option>
                         <option value="二年级" ${student?.grade === '二年级' ? 'selected' : ''}>二年级</option>
@@ -49,8 +51,8 @@ class StudentFormPage {
                 <div class="form-group">
                     <label style="display:block;margin-bottom:8px;font-weight:500;">试听学生</label>
                     <label class="toggle-label">
-                        <input type="checkbox" id="student-trial" ${student && student.isTrial ? 'checked' : ''}>
-                        <span class="toggle-switch"></span>
+                        <input type="checkbox" id="student-trial" name="student-trial" ${student && student.isTrial ? 'checked' : ''}>
+                        <span class="toggle-switch" aria-hidden="true"></span>
                         <span>标记为试听学生</span>
                     </label>
                     <p class="hint-text">标记后，生成的反馈标题会显示"试听"字样</p>
@@ -63,7 +65,7 @@ class StudentFormPage {
                             <label class="subject-checkbox-item" style="--subject-color: ${s.color}">
                                 <input type="checkbox" name="subject" value="${s.id}"
                                     ${studentSubjectIds.includes(s.id) ? 'checked' : ''}>
-                                <span class="check-box" style="border-color: ${s.color}">
+                                <span class="check-box" style="border-color: ${s.color}" aria-hidden="true">
                                     <span class="check-mark" style="background: ${s.color}"></span>
                                 </span>
                                 <span class="subject-label">${escapeHtml(s.name)}</span>
