@@ -1,5 +1,5 @@
 // Service Worker - 课堂反馈助手离线缓存
-const CACHE_NAME = 'classroom-feedback-v1.9.40';
+const CACHE_NAME = 'classroom-feedback-v1.9.41';
 
 // 需要缓存的静态资源（同时包含 /tutorial 兼容 Cloudflare Pretty URL）
 const STATIC_ASSETS = [
@@ -23,6 +23,7 @@ const STATIC_ASSETS = [
     '/js/pages/studentFormPage.js',
     '/js/pages/studentsPage.js',
     '/js/pages/subjectSelectPage.js',
+    '/vendor/transformers.min.js',
     '/manifest.json'
 ];
 

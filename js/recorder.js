@@ -1258,6 +1258,12 @@ class Recorder {
             if (typeof window.transformers === 'undefined') {
                 throw new Error('Transformers.js 库未加载，请刷新页面重试');
             }
+            // 配置模型下载源为国内镜像（HuggingFace 在国内被墙）
+            if (window.transformers.env) {
+                window.transformers.env.remoteHost = 'https://hf-mirror.com';
+                // 允许从镜像下载模型，不使用本地缓存路径的默认行为
+                window.transformers.env.allowLocalModels = false;
+            }
             const statusEl = document.getElementById('whisper-model-status');
             if (statusEl) statusEl.textContent = '模型状态：正在加载...';
 

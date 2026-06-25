@@ -153,11 +153,11 @@
     <script src="js/pages/recordPage.js?v=38"></script>
     <script src="js/pages/historyPage.js?v=36"></script>
     <script src="js/pages/settingsPage.js?v=37"></script>
-    <!-- Transformers.js：本地AI语音识别（Whisper模型），按需加载 -->
+    <!-- Transformers.js：本地AI语音识别（Whisper模型），本地托管避免CDN不稳定 -->
     <script type="module">
-        import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.1/dist/transformers.min.js')
+        import('./vendor/transformers.min.js')
             .then(m => { window.transformers = m; console.log('[Transformers.js] 加载成功'); })
-            .catch(e => { console.warn('[Transformers.js] CDN加载失败，本地AI识别功能将不可用:', e); });
+            .catch(e => { console.warn('[Transformers.js] 加载失败，本地AI识别功能将不可用:', e); });
     </script>
     <script src="js/app.js?v=38"></script>
     <script>
