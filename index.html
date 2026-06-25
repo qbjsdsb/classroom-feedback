@@ -2,15 +2,16 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>课堂反馈助手</title>
-    <link rel="stylesheet" href="css/style.css?v=36">
+    <link rel="stylesheet" href="css/style.css?v=37">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="apple-touch-icon" href="icon.svg">
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#6366F1">
+    <meta name="color-scheme" content="light dark">
 </head>
 <body>
     <div class="desktop-layout">
@@ -37,7 +38,7 @@
             </nav>
             <div class="sidebar-footer">
                 <span>课堂反馈助手 v1.9 · 纯前端应用</span>
-                <a href="tutorial.html" class="help-link" title="使用教程">❓</a>
+                <a href="tutorial.html" class="help-link" title="使用教程" aria-label="查看使用教程">❓</a>
             </div>
         </aside>
 
@@ -141,18 +142,18 @@
 
     <!-- Scripts -->
     <script src="js/db.js?v=2"></script>
-    <script src="js/storage.js?v=36"></script>
+    <script src="js/storage.js?v=37"></script>
     <script src="js/models.js?v=38"></script>
     <script src="js/recorder.js?v=45"></script>
     <script src="js/ai.js?v=37"></script>
-    <script src="js/ui.js?v=36"></script>
+    <script src="js/ui.js?v=37"></script>
     <script src="js/components/bottomSheet.js?v=32"></script>
-    <script src="js/pages/studentsPage.js?v=33"></script>
-    <script src="js/pages/studentFormPage.js?v=33"></script>
-    <script src="js/pages/subjectSelectPage.js?v=32"></script>
-    <script src="js/pages/recordPage.js?v=38"></script>
-    <script src="js/pages/historyPage.js?v=36"></script>
-    <script src="js/pages/settingsPage.js?v=37"></script>
+    <script src="js/pages/studentsPage.js?v=34"></script>
+    <script src="js/pages/studentFormPage.js?v=34"></script>
+    <script src="js/pages/subjectSelectPage.js?v=33"></script>
+    <script src="js/pages/recordPage.js?v=39"></script>
+    <script src="js/pages/historyPage.js?v=37"></script>
+    <script src="js/pages/settingsPage.js?v=38"></script>
     <!-- Transformers.js：本地AI语音识别（Whisper模型），本地托管避免CDN不稳定 -->
     <script type="module">
         import('./vendor/transformers.min.js')

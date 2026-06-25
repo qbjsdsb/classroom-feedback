@@ -204,9 +204,27 @@ class Storage {
         return this._getCache('cf_theme') || DEFAULT_THEME;
     }
 
+    // 各主题对应的 theme-color（用于浏览器地址栏/状态栏配色）
+    static _getThemeColor(theme) {
+        const colors = {
+            default: '#F1F5F9', // 浅灰背景
+            warm: '#FFFBEB',    // 暖色背景
+            green: '#ECFDF5',   // 绿色背景
+            dark: '#0F172A'     // 深色背景
+        };
+        return colors[theme] || colors.default;
+    }
+
+    // 同步更新 <meta name="theme-color"> 以匹配当前主题背景
+    static _updateThemeColor(theme) {
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', this._getThemeColor(theme));
+    }
+
     static setTheme(theme) {
         this._setCache('cf_theme', theme);
         document.documentElement.setAttribute('data-theme', theme === 'default' ? '' : theme);
+        this._updateThemeColor(theme);
     }
 
     static initTheme() {
@@ -214,6 +232,7 @@ class Storage {
         if (theme && theme !== 'default') {
             document.documentElement.setAttribute('data-theme', theme);
         }
+        this._updateThemeColor(theme);
     }
 
     static reset() {

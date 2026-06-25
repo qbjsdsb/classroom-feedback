@@ -15,7 +15,7 @@ class HistoryPage {
             this._lastStudentId = null;
             this.container.innerHTML = `
                 <header>
-                    <button class="back-btn" onclick="app.navigate('record')">←</button>
+                    <button class="back-btn" onclick="app.navigate('record')" aria-label="返回课堂录音">←</button>
                     <h1>📋 历史反馈</h1>
                 </header>
                 <div class="empty-state">
@@ -79,7 +79,7 @@ class HistoryPage {
 
         this.container.innerHTML = `
             <header>
-                <button class="back-btn" onclick="app.navigate('record')">←</button>
+                <button class="back-btn" onclick="app.navigate('record')" aria-label="返回课堂录音">←</button>
                 <h1>📋 ${escapeHtml(student.name)} 的历史反馈</h1>
             </header>
 
@@ -208,7 +208,7 @@ class HistoryPage {
             <div class="history-detail">
                 <div class="detail-header">
                     <h3>${escapeHtml(subject ? subject.name : '未分类')} - ${dateStr}</h3>
-                    <button onclick="UI.closeBottomSheet()" class="close-btn">&times;</button>
+                    <button onclick="UI.closeBottomSheet()" class="close-btn" aria-label="关闭">&times;</button>
                 </div>
                 <div class="detail-content">
                     ${feedbackHtml}
@@ -488,7 +488,7 @@ ${feedbackSummary}
             <div class="history-detail">
                 <div class="detail-header">
                     <h3>📊 ${escapeHtml(studentName)} 的学习总结</h3>
-                    <button onclick="UI.closeBottomSheet()" class="close-btn">&times;</button>
+                    <button onclick="UI.closeBottomSheet()" class="close-btn" aria-label="关闭">&times;</button>
                 </div>
                 <div class="detail-content">
                     ${summaryHtml}

@@ -34,7 +34,7 @@ class SubjectSelectPage {
 
         this.container.innerHTML = `
             <header>
-                <button class="back-btn" onclick="app.navigate('students')">←</button>
+                <button class="back-btn" onclick="app.navigate('students')" aria-label="返回学生管理">←</button>
                 <div class="session-info">
                     <div class="student-name">${title}</div>
                     <div class="subject-name">${subtitle}</div>

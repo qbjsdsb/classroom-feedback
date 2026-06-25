@@ -13,7 +13,7 @@ class SettingsPage {
 
         this.container.innerHTML = `
             <header>
-                <button class="back-btn" onclick="app.navigate('students')">←</button>
+                <button class="back-btn" onclick="app.navigate('students')" aria-label="返回学生管理">←</button>
                 <h1>⚙️ 设置</h1>
             </header>
 
@@ -353,9 +353,9 @@ class SettingsPage {
                     <span class="manage-item-name">${escapeHtml(s.name)}</span>
                 </div>
                 <div class="manage-item-actions">
-                    <input type="color" class="color-picker" value="${escapeHtml(s.color)}"
+                    <input type="color" class="color-picker" value="${escapeHtml(s.color)}" aria-label="科目颜色"
                            onchange="settingsPage.updateSubjectColor('${s.id}', this.value)">
-                    <button class="delete-btn" onclick="settingsPage.deleteSubject('${s.id}')">🗑️</button>
+                    <button class="delete-btn" onclick="settingsPage.deleteSubject('${s.id}')" aria-label="删除科目 ${escapeHtml(s.name)}">🗑️</button>
                 </div>
             </div>
         `).join('');
@@ -370,9 +370,9 @@ class SettingsPage {
                            onchange="settingsPage.toggleModule(${i})">
                     <span class="manage-item-name">${escapeHtml(m.name)}</span>
                     <div style="margin-left:auto;display:flex;gap:2px;">
-                        <button class="sort-btn" onclick="settingsPage.moveModule(${i}, -1)" ${i === 0 ? 'disabled style="opacity:0.3;cursor:default;"' : ''} title="上移">↑</button>
-                        <button class="sort-btn" onclick="settingsPage.moveModule(${i}, 1)" ${i === modules.length - 1 ? 'disabled style="opacity:0.3;cursor:default;"' : ''} title="下移">↓</button>
-                        ${m.custom ? `<button class="delete-btn" onclick="settingsPage.deleteModule(${i})">🗑️</button>` : ''}
+                        <button class="sort-btn" onclick="settingsPage.moveModule(${i}, -1)" ${i === 0 ? 'disabled style="opacity:0.3;cursor:default;"' : ''} title="上移" aria-label="上移模块 ${escapeHtml(m.name)}">↑</button>
+                        <button class="sort-btn" onclick="settingsPage.moveModule(${i}, 1)" ${i === modules.length - 1 ? 'disabled style="opacity:0.3;cursor:default;"' : ''} title="下移" aria-label="下移模块 ${escapeHtml(m.name)}">↓</button>
+                        ${m.custom ? `<button class="delete-btn" onclick="settingsPage.deleteModule(${i})" aria-label="删除模块 ${escapeHtml(m.name)}">🗑️</button>` : ''}
                     </div>
                 </div>
                 ${m.custom ? `
@@ -1029,7 +1029,7 @@ class SettingsPage {
                         <option value="warn">警告</option>
                         <option value="info">信息</option>
                     </select>
-                    <button id="log-panel-close" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-muted);padding:0 4px;line-height:1;">&times;</button>
+                    <button id="log-panel-close" style="background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--text-muted);padding:0 4px;line-height:1;" aria-label="关闭日志面板">&times;</button>
                 </div>
             </div>
             <div id="log-panel-content" style="flex:1;overflow-y:auto;padding:12px 16px;font-family:monospace;font-size:0.8rem;line-height:1.6;">

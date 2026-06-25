@@ -31,7 +31,7 @@ class RecordPage {
 
         this.container.innerHTML = `
             <header>
-                <button class="back-btn" onclick="app.navigate('subject-select')">←</button>
+                <button class="back-btn" onclick="app.navigate('subject-select')" aria-label="返回科目选择">←</button>
                 <div class="session-info">
                     <div class="student-name">${headerInfo}</div>
                     <div style="display:flex;align-items:center;gap:6px;">
@@ -39,7 +39,7 @@ class RecordPage {
                         <button class="text-btn" onclick="recordPage.showPromptTemplatePicker()" style="font-size:0.8rem;padding:2px 6px;">📋 选择模板</button>
                     </div>
                 </div>
-                <button id="btn-page-settings" class="icon-btn">⚙️</button>
+                <button id="btn-page-settings" class="icon-btn" aria-label="打开设置">⚙️</button>
             </header>
 
             <main>

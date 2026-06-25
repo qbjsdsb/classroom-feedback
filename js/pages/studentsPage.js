@@ -151,7 +151,7 @@ class StudentsPage {
                 ${this.isGroupMode ? `
                     <div class="select-indicator">${isSelected ? '✓' : ''}</div>
                 ` : `
-                    <button class="student-menu-btn" onclick="event.stopPropagation(); studentsPage.showMenu('${student.id}')">
+                    <button class="student-menu-btn" onclick="event.stopPropagation(); studentsPage.showMenu('${student.id}')" aria-label="学生操作菜单">
                         ⋮
                     </button>
                 `}

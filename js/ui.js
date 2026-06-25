@@ -57,6 +57,9 @@ const UI = {
         const toast = document.createElement('div');
         toast.className = `toast toast-${type}`;
         toast.textContent = message;
+        // aria-live 让屏幕阅读器播报异步状态变化
+        toast.setAttribute('role', 'status');
+        toast.setAttribute('aria-live', 'polite');
         document.body.appendChild(toast);
 
         // 强制回流后添加 show 类触发动画
@@ -88,6 +91,8 @@ const UI = {
 
         const toast = document.createElement('div');
         toast.className = 'toast toast-warning toast-undo';
+        toast.setAttribute('role', 'status');
+        toast.setAttribute('aria-live', 'polite');
 
         const msgSpan = document.createElement('span');
         msgSpan.textContent = message;
@@ -95,6 +100,7 @@ const UI = {
         const undoBtn = document.createElement('button');
         undoBtn.className = 'toast-undo-btn';
         undoBtn.textContent = '撤销';
+        undoBtn.setAttribute('aria-label', '撤销上一步操作');
 
         toast.appendChild(msgSpan);
         toast.appendChild(undoBtn);
@@ -224,6 +230,8 @@ const UI = {
     showLoading(message) {
         const overlay = document.createElement('div');
         overlay.id = 'loading-overlay';
+        overlay.setAttribute('role', 'alert');
+        overlay.setAttribute('aria-live', 'assertive');
         overlay.innerHTML = `
             <div class="loading-spinner"></div>
             <p id="loading-message" style="margin-top: 20px; color: var(--text-secondary); font-size: 0.95rem;">${message}</p>

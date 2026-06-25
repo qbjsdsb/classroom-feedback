@@ -34,6 +34,7 @@
 
 /* ===== Theme: Dark ===== */
 [data-theme="dark"] {
+    color-scheme: dark;
     --primary-soft: rgba(99, 102, 241, 0.1);
     --primary-shadow: rgba(99, 102, 241, 0.35);
     --primary-glow: rgba(99, 102, 241, 0.2);
@@ -92,6 +93,15 @@
 ::selection {
     background: var(--primary-glow);
     color: var(--text);
+}
+
+/* 全局触控优化：消除移动端 300ms 点击延迟，移除默认点击高亮 */
+button, a, [role="button"], input[type="checkbox"], input[type="radio"], label {
+    touch-action: manipulation;
+}
+
+html {
+    -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -461,7 +471,7 @@ header h1 {
     transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.grade-filter select:focus {
+.grade-filter select:focus-visible {
     outline: none;
     border-color: var(--primary-light);
     box-shadow: 0 0 0 3px var(--primary-soft);
@@ -977,7 +987,7 @@ header h1 {
     box-shadow: var(--shadow-sm);
 }
 
-#transcript:focus {
+#transcript:focus-visible {
     outline: none;
     border-color: var(--primary-light);
     box-shadow: 0 0 0 4px var(--primary-soft), 0 4px 12px var(--primary-soft);
@@ -1104,7 +1114,7 @@ header h1 {
     width: 100%;
 }
 
-.form-group input:focus {
+.form-group input:focus-visible {
     outline: none;
     border-color: var(--primary-light);
     box-shadow: 0 0 0 4px var(--primary-soft);
@@ -1130,7 +1140,7 @@ header h1 {
     transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s, background 0.2s;
 }
 
-.form-group select:focus {
+.form-group select:focus-visible {
     outline: none;
     border-color: var(--primary-light);
     box-shadow: 0 0 0 4px var(--primary-soft);
@@ -1416,7 +1426,7 @@ header h1 {
     padding: 2px 6px;
     border-radius: 4px;
     color: var(--text-muted);
-    transition: all 0.2s ease;
+    transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
 }
 
 .sort-btn:hover:not(:disabled) {
@@ -1463,7 +1473,7 @@ header h1 {
     color: var(--text-secondary);
     font-size: 0.82rem;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
 }
 
 .history-filter-chip:hover {
@@ -1659,6 +1669,7 @@ header h1 {
     max-width: 560px;
     max-height: 90vh;
     overflow-y: auto;
+    overscroll-behavior: contain;
     box-shadow: var(--shadow-xl), 0 0 0 1px var(--border);
     border: 1px solid var(--border);
     transform: translateY(20px);
@@ -1759,6 +1770,7 @@ header h1 {
     padding: 20px;
     max-height: 80vh;
     overflow-y: auto;
+    overscroll-behavior: contain;
     transform: translateY(30px);
     opacity: 0;
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.25s ease;
@@ -1919,7 +1931,7 @@ header h1 {
     font-weight: 500;
     cursor: pointer;
     border: 1.5px solid transparent;
-    transition: all 0.2s;
+    transition: background 0.2s, color 0.2s, transform 0.2s, box-shadow 0.2s, border-color 0.2s;
     margin-top: 8px;
 }
 
@@ -2051,6 +2063,7 @@ header h1 {
     border: 1px solid var(--border);
     transform: scale(0.95);
     opacity: 0;
+    overscroll-behavior: contain;
     transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
 }
 .confirm-overlay.show .confirm-dialog {
@@ -2485,7 +2498,7 @@ header h1 {
     transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s, background 0.2s;
 }
 
-.advanced-content input:focus {
+.advanced-content input:focus-visible {
     outline: none;
     border-color: var(--primary-light);
     box-shadow: 0 0 0 4px var(--primary-soft);
@@ -2696,7 +2709,7 @@ header h1 {
     color: var(--text-secondary);
     font-size: 0.85rem;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: border-color 0.2s, background 0.2s, color 0.2s;
     font-family: inherit;
 }
 .qr-cat-btn:hover {
@@ -3310,7 +3323,7 @@ header h1 {
 .feedback-section:nth-child(4) { animation-delay: 0.20s; }
 
 /* Input focus ring animation */
-input:focus, textarea:focus, select:focus {
+input:focus-visible, textarea:focus-visible, select:focus-visible {
     border-color: var(--primary-light);
     box-shadow: 0 0 0 3px var(--primary-glow);
     transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease, background 0.2s ease;

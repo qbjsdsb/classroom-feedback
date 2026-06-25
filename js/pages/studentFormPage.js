@@ -16,7 +16,7 @@ class StudentFormPage {
 
         this.container.innerHTML = `
             <header>
-                <button class="back-btn" onclick="app.navigate('students')">←</button>
+                <button class="back-btn" onclick="app.navigate('students')" aria-label="返回学生管理">←</button>
                 <h1>${isEdit ? '✏️ 编辑学生' : '➕ 添加学生'}</h1>
             </header>
 
