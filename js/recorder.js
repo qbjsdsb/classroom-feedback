@@ -1620,8 +1620,8 @@ class Recorder {
             // createMediaStreamSource 的重采样会静默失败，输出全 0 数据（RMS=0.0000）。
             // 正确做法：让 AudioContext 使用原生采样率（通常 44100/48000），采集后手动重采样到 16000Hz。
             const TARGET_SAMPLE_RATE = 16000; // Whisper 模型要求的采样率
-            const CHUNK_DURATION = 10; // 秒（每 10 秒切一段送去 Worker 识别）
-            const TARGET_BUFFER_SIZE = TARGET_SAMPLE_RATE * CHUNK_DURATION; // 160000 样本
+            const CHUNK_DURATION = 5; // 秒（每 5 秒切一段送去 Worker 识别，降低首次识别延迟）
+            const TARGET_BUFFER_SIZE = TARGET_SAMPLE_RATE * CHUNK_DURATION; // 80000 样本
 
             const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
             this._whisperAudioContext = new AudioContextCtor(); // 使用默认采样率
@@ -1695,7 +1695,7 @@ class Recorder {
             // 即使缓冲区没满，也定期识别，避免用户停顿时间长但话已说完
             this._whisperRecognizeInterval = setInterval(() => {
                 if (!this.isRecording) return;
-                if (this._whisperBufferIndex < TARGET_SAMPLE_RATE * 3) return; // 至少 3 秒才识别
+                if (this._whisperBufferIndex < TARGET_SAMPLE_RATE * 1.5) return; // 至少 1.5 秒才识别
                 const chunk = this._whisperAudioBuffer.slice(0, this._whisperBufferIndex);
                 this._whisperBufferIndex = 0;
                 this._enqueueWhisperChunk(chunk, TARGET_SAMPLE_RATE);
@@ -1758,6 +1758,17 @@ class Recorder {
             this._whisperProcessor.disconnect();
             this._whisperProcessor = null;
         }
+
+        // 关键修复：停止前把缓冲区剩余数据送入 Worker 识别
+        // 否则短录音（< chunk 时长）的数据会被直接丢弃，导致没有任何文字输出
+        if (this._whisperAudioBuffer && this._whisperBufferIndex >= 16000 * 1) {
+            // 至少 1 秒数据才值得识别
+            const remainingChunk = this._whisperAudioBuffer.slice(0, this._whisperBufferIndex);
+            console.log(`[Whisper] 停止前发送剩余缓冲区 ${this._whisperBufferIndex} 样本 (${(this._whisperBufferIndex/16000).toFixed(1)}s)`);
+            this._enqueueWhisperChunk(remainingChunk, 16000);
+        }
+        this._whisperBufferIndex = 0;
+
         if (this._whisperAudioContext) {
             this._whisperAudioContext.close().catch(() => {});
             this._whisperAudioContext = null;
@@ -1769,15 +1780,14 @@ class Recorder {
         this._whisperWorkerBusy = false;
         this.isRecording = false;
 
-        // 完全停止时清空缓冲区和待处理队列
+        // 完全停止时清空缓冲区（但不清空 pendingChunks，让剩余 chunk 的结果仍能写入文本框）
         // 注意：不 terminate Worker（保留 pipeline，下次录音直接用，避免重新加载 40MB 模型）
         if (isFullStop) {
             this._whisperAudioBuffer = null;
-            this._whisperBufferIndex = 0;
             this._whisperPausedDuration = 0;
-            this._whisperPendingChunks = new Map();
-            this._whisperChunkId = 0;
-            this._whisperNextFlushId = 0;
+            this._whisperResampleCarry = 0;
+            // 不清空 _whisperPendingChunks / _whisperChunkId / _whisperNextFlushId
+            // 让 stop 前送入的剩余 chunk 能被 Worker 处理并写入文本框
         }
     }
 
