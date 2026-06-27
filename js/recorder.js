@@ -1007,6 +1007,11 @@ class Recorder {
         if (speechConfig.provider === 'whisper') {
             // 使用本地AI识别
             this._isStarting = true; // 防重入保护
+            // 即时 UI 反馈：getUserMedia 是异步的，等待期间立即更新按钮状态
+            // 避免用户以为卡死而重复点击（双击会导致 toggle 走 pause 分支）
+            UI.updateRecordButton(true);
+            const statusEl = document.querySelector('.record-status');
+            if (statusEl) statusEl.textContent = '正在启动本地AI识别...';
             try {
                 this.shouldRestart = false; // Whisper不需要自动重启
                 this._userIntendsToRecord = true; // 标记用户意图录音（语义一致性）
@@ -1018,12 +1023,18 @@ class Recorder {
                 }
                 const started = await this.startWhisperRecognition();
                 this.isRecording = started;
-                if (!started) {
+                if (started) {
+                    if (statusEl) statusEl.textContent = '正在录音，点击暂停';
+                    this.startTimer();
+                } else {
+                    // 启动失败：恢复按钮状态
+                    UI.updateRecordButton(false);
                     this.sessionStartTime = null;
                     this._userIntendsToRecord = false; // 启动失败，清除意图标志
                 }
             } catch (err) {
                 // 未预期异常：清理所有状态，防止残留
+                UI.updateRecordButton(false);
                 this._userIntendsToRecord = false;
                 this.sessionStartTime = null;
                 this.isRecording = false;
@@ -1678,8 +1689,20 @@ class Recorder {
     /**
      * 把音频分片加入待识别队列，并立即尝试发送给 Worker
      * Worker 一次只处理一个 chunk（互斥），多余的排队等待
+     * 队列溢出保护：如果积压超过 2 个未处理 chunk，丢弃最旧的（避免无限堆积导致延迟越来越大）
      */
     _enqueueWhisperChunk(audio, sampleRate) {
+        // 队列溢出保护：统计未处理的 chunk 数量
+        let pendingCount = 0;
+        for (const item of this._whisperPendingChunks.values()) {
+            if (!item.done) pendingCount++;
+        }
+        // 如果积压超过 2 个未处理 chunk，丢弃当前这个（Worker 来不及处理，保留旧 chunk 会越来越延迟）
+        if (pendingCount >= 2) {
+            console.log('[Whisper] 队列积压，丢弃音频 chunk（Worker 处理不过来）');
+            return;
+        }
+
         const chunkId = this._whisperChunkId++;
         this._whisperPendingChunks.set(chunkId, { audio, sampleRate, sent: false, done: false });
         // 尝试发送（如果 Worker 空闲）
@@ -1905,6 +1928,54 @@ class Recorder {
             try { this._importAudioCtx.close(); } catch(e) {}
             this._importAudioCtx = null;
         }
+
+        const speechConfig = Storage.getSpeechConfig();
+        if (speechConfig.provider === 'whisper') {
+            // Whisper 模式：立即停止音频采集和 UI，不等待 Worker 处理完 pending chunks
+            // （pending chunks 的结果仍会通过 _onWorkerMessage 写入，但不再阻塞 stop）
+            this.stopWhisperRecognition();
+            this.commitTranscript();
+            this.stopTimer();
+
+            const textarea = document.getElementById('transcript');
+            if (textarea) {
+                textarea.value = this.accumulatedText.trim();
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+            }
+
+            // 立即更新 UI（按钮 + 状态）
+            UI.updateRecordButton(false);
+            const statusEl = document.querySelector('.record-status');
+            if (statusEl) statusEl.textContent = '点击开始录制课堂内容';
+            const stopBtn = document.getElementById('btn-stop-record');
+            if (stopBtn) stopBtn.style.display = 'none';
+
+            // 同步停止课堂计时器并保存时长
+            if (recordPage && typeof recordPage.stopClassTimer === 'function') {
+                recordPage.stopClassTimer();
+            }
+
+            // 显示录音统计
+            const stats = this.getRecordingStats();
+            if (stats.duration > 10) {
+                UI.showToast(`录音已停止（${stats.durationStr}，${stats.charCount}字）`);
+            } else {
+                UI.showToast('录音已停止');
+            }
+
+            // 完全停止：清空所有状态
+            this.finalTranscript = '';
+            this.interimTranscript = '';
+            this.accumulatedText = '';
+            this.sessionStartTime = null;
+            this.restartCount = 0;
+            this.segmentCount = 0;
+
+            // 不 terminate Worker（保留 pipeline，下次录音直接用）
+            return;
+        }
+
+        // 浏览器模式：原有的 SpeechRecognition 停止逻辑
         // 停止 Whisper 识别
         this.stopWhisperRecognition();
         this.commitTranscript();

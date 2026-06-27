@@ -70,21 +70,43 @@ async function transcribe({ audio, sampleRate, chunkId }) {
         return;
     }
     try {
+        // 简单 VAD：计算音频 RMS 能量，静音段直接返回空文本
+        // Whisper 对静音/低能量音频容易产生"我我我""你你你"等重复 token 幻觉
+        let sumSq = 0;
+        for (let i = 0; i < audio.length; i++) {
+            sumSq += audio[i] * audio[i];
+        }
+        const rms = Math.sqrt(sumSq / audio.length);
+        // RMS < 0.01 视为静音（16-bit PCM 的 -40dB 约对应 0.01）
+        if (rms < 0.01) {
+            self.postMessage({ type: 'result', text: '', chunkId });
+            return;
+        }
+
         // 关键参数说明：
-        // - chunk_length_s: 30（transformers.js 内部切分窗口，传比音频更长的值避免内部二次切分）
-        // - return_timestamps: true（让 pipeline 内部按 VAD 切分，避免静音段产生重复 token 幻觉）
+        // - chunk_length_s: 不传（让 transformers.js 用默认值，避免与音频长度不匹配导致内部切分异常）
+        // - return_timestamps: false（实时识别不需要时间戳，避免 chunks 返回导致处理复杂化）
         // - language: 'chinese', task: 'transcribe'
+        // - max_new_tokens: 限制生成长度，避免静音段产生超长重复 token
+        const audioDuration = audio.length / sampleRate;
         const result = await pipeline(audio, {
             sampling_rate: sampleRate,
             language: 'chinese',
             task: 'transcribe',
-            chunk_length_s: 30,
-            return_timestamps: true
+            return_timestamps: false,
+            // 限制最大生成 token 数：中文每字约 1-2 token，10 秒音频最多约 100 字
+            // 避免模型在静音/噪声段无限生成重复 token
+            max_new_tokens: Math.min(200, Math.floor(audioDuration * 25))
         });
 
         let text = '';
         if (result && result.text) {
             text = result.text.trim();
+            // 去除 Whisper 常见的幻觉重复模式：
+            // 连续重复相同字符（如"我我我我我"、"。。。。。。"）
+            text = text.replace(/(.)\1{4,}/g, '$1$1');
+            // 去除连续重复的短句（如"你好你好你好你好"）
+            text = text.replace(/(.{2,8}?)\1{2,}/g, '$1');
         }
 
         self.postMessage({ type: 'result', text, chunkId });
