@@ -77,8 +77,10 @@ async function transcribe({ audio, sampleRate, chunkId }) {
             sumSq += audio[i] * audio[i];
         }
         const rms = Math.sqrt(sumSq / audio.length);
-        // RMS < 0.01 视为静音（16-bit PCM 的 -40dB 约对应 0.01）
-        if (rms < 0.01) {
+        console.log(`[WhisperWorker] chunkId=${chunkId} 音频时长=${(audio.length/sampleRate).toFixed(1)}s RMS=${rms.toFixed(4)}`);
+        // RMS < 0.003 视为静音（降低阈值，避免误判低增益麦克风的正常说话为静音）
+        if (rms < 0.003) {
+            console.log(`[WhisperWorker] chunkId=${chunkId} 静音跳过`);
             self.postMessage({ type: 'result', text: '', chunkId });
             return;
         }
@@ -102,11 +104,14 @@ async function transcribe({ audio, sampleRate, chunkId }) {
         let text = '';
         if (result && result.text) {
             text = result.text.trim();
+            console.log(`[WhisperWorker] chunkId=${chunkId} 识别结果: "${text}"`);
             // 去除 Whisper 常见的幻觉重复模式：
             // 连续重复相同字符（如"我我我我我"、"。。。。。。"）
             text = text.replace(/(.)\1{4,}/g, '$1$1');
             // 去除连续重复的短句（如"你好你好你好你好"）
             text = text.replace(/(.{2,8}?)\1{2,}/g, '$1');
+        } else {
+            console.log(`[WhisperWorker] chunkId=${chunkId} 识别结果为空`);
         }
 
         self.postMessage({ type: 'result', text, chunkId });

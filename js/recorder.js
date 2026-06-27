@@ -1521,6 +1521,7 @@ class Recorder {
             this._whisperWorkerBusy = false;
             const chunkId = msg.chunkId;
             const text = msg.text || '';
+            console.log(`[Whisper] 收到结果 chunkId=${chunkId} text="${text}" 队列大小=${this._whisperPendingChunks.size}`);
 
             // 把结果存入待处理队列
             this._whisperPendingChunks.set(chunkId, { text, done: true });
@@ -1554,9 +1555,11 @@ class Recorder {
                 // 文本去重：如果新文本是已有文本的子串前缀，跳过（Whisper 重复识别）
                 const existing = this.accumulatedText;
                 if (existing.endsWith(item.text)) {
+                    console.log(`[Whisper] chunkId=${this._whisperNextFlushId} 文本重复跳过`);
                     // 完全重复，跳过
                 } else {
                     this.accumulatedText += item.text;
+                    console.log(`[Whisper] 写入文本 chunkId=${this._whisperNextFlushId} 累计${this.accumulatedText.length}字`);
                     this.updateDisplay();
                     const textarea = document.getElementById('transcript');
                     if (textarea) {
@@ -1564,6 +1567,8 @@ class Recorder {
                         textarea.scrollTop = textarea.scrollHeight;
                     }
                 }
+            } else {
+                console.log(`[Whisper] chunkId=${this._whisperNextFlushId} 空文本跳过`);
             }
             this._whisperNextFlushId++;
         }
@@ -1579,6 +1584,7 @@ class Recorder {
             if (!item.done && !item.sent) {
                 item.sent = true;
                 this._whisperWorkerBusy = true;
+                console.log(`[Whisper] 发送 chunkId=${id} 到 Worker 音频${item.audio.length}样本`);
                 this._whisperWorker.postMessage({
                     type: 'transcribe',
                     audio: item.audio,
@@ -1649,6 +1655,7 @@ class Recorder {
                     }
                 }
             };
+            console.log('[Whisper] onaudioprocess 已注册，BUFFER_SIZE=', BUFFER_SIZE);
             analyser.connect(processor);
             // 不能直接 connect(destination)，否则麦克风音频会从扬声器播放产生回声/啸叫
             // ScriptProcessorNode 必须连接 destination 才能触发 onaudioprocess
