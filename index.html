@@ -146,7 +146,7 @@
     <script src="js/db.js?v=4"></script>
     <script src="js/storage.js?v=39"></script>
     <script src="js/models.js?v=39"></script>
-    <script src="js/recorder.js?v=52"></script>
+    <script src="js/recorder.js?v=53"></script>
     <script src="js/ai.js?v=38"></script>
     <script src="js/ui.js?v=41"></script>
     <script src="js/components/bottomSheet.js?v=34"></script>
@@ -165,8 +165,10 @@
     <script src="js/app.js?v=42"></script>
     <script>
         // 注册 Service Worker 实现离线缓存
+        // 使用相对路径 './sw.js'，适配 GitHub Pages 子路径部署（如 https://user.github.io/repo/）
+        // 绝对路径 '/sw.js' 在子路径部署下会指向站点根，导致 404 注册失败
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/sw.js').then(() => {
+            navigator.serviceWorker.register('./sw.js').then(() => {
                 console.log('[SW] Service Worker 注册成功');
             }).catch((err) => {
                 console.warn('[SW] Service Worker 注册失败:', err);

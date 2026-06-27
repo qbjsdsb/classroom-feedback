@@ -1420,6 +1420,16 @@ class Recorder {
             // （AWS CloudFront CDN），这个 xet CDN 域名在国内被墙，浏览器无法访问，
             // 导致 transformers.js 跟随重定向后下载失败。
             // 解决方案：本地托管 whisper-tiny 模型（量化版约 41MB），完全离线加载
+
+            // 适配 GitHub Pages 子路径部署（如 https://user.github.io/repo/）：
+            // 动态计算站点根路径，确保 /vendor 路径在任何部署方式下都正确。
+            // window.location.pathname 在根部署为 '/'，子路径部署为 '/repo/' 或 '/repo/index.html'
+            const _loc = window.location.pathname;
+            const _basePath = _loc.replace(/[^/]*$/, '').replace(/\/$/, ''); // 去掉文件名和尾部斜杠
+            const _whisperModelPath = _basePath + '/vendor/whisper-tiny';
+            console.log('[Whisper] 站点根路径:', _basePath || '(根部署)');
+            console.log('[Whisper] 模型完整路径:', _whisperModelPath);
+
             if (window.transformers.env) {
                 // 启用本地模型加载（浏览器环境默认 false，必须显式开启）
                 window.transformers.env.allowLocalModels = true;
@@ -1428,9 +1438,11 @@ class Recorder {
                 // 该 xet CDN 在国内被墙，浏览器无法访问，下载必失败）
                 // 配合 local_files_only:true，所有模型文件只能从本地 /vendor/ 加载
                 window.transformers.env.allowRemoteModels = false;
-                // 指定本地模型路径为 /vendor，transformers.js 会从
-                // {localModelPath}/{modelId}/ 加载文件，即 /vendor/whisper-tiny/
-                window.transformers.env.localModelPath = '/vendor';
+                // 指定本地模型路径（适配子路径部署）
+                // 注意：transformers.js v3.4.1 存在 bug，localModelPath 在实际 fetch 时被忽略
+                // （源码中 y=g 而非 y=w，localModelPath 只用于 cache 匹配），
+                // 因此下方 pipeline 调用直接传完整路径 _whisperModelPath 作为 modelId 来绕过此 bug
+                window.transformers.env.localModelPath = _basePath + '/vendor';
                 console.log('[Whisper] env.localModelPath:', window.transformers.env.localModelPath);
                 console.log('[Whisper] env.allowLocalModels:', window.transformers.env.allowLocalModels);
                 console.log('[Whisper] env.allowRemoteModels:', window.transformers.env.allowRemoteModels);
@@ -1455,12 +1467,12 @@ class Recorder {
 
             console.log('[Whisper] 开始创建 pipeline...');
             // 使用本地托管的 whisper-tiny 模型（量化版）
-            // 模型文件位于 /vendor/whisper-tiny/，env.localModelPath=/vendor
-            // transformers.js 会从 /vendor/whisper-tiny/ 加载
+            // 模型文件位于 /vendor/whisper-tiny/（适配子路径部署，路径在上方动态计算）
+            // 绕过 transformers.js v3.4.1 的 localModelPath bug：直接传完整路径作为 modelId
             // local_files_only: true 强制只从本地加载，不尝试远程下载
             this._whisperPipeline = await window.transformers.pipeline(
                 'automatic-speech-recognition',
-                'whisper-tiny',
+                _whisperModelPath,
                 {
                     local_files_only: true,
                     progress_callback: (progress) => {
