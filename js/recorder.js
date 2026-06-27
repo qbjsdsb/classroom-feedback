@@ -1615,25 +1615,33 @@ class Recorder {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             this._whisperMediaStream = stream;
 
-            // 创建 AudioContext，指定采样率为 16000Hz（Whisper 模型要求的采样率）
-            const SAMPLE_RATE = 16000;
+            // 关键修复：不要强制 AudioContext 采样率为 16000Hz！
+            // 很多浏览器/硬件在 new AudioContext({ sampleRate: 16000 }) 时，
+            // createMediaStreamSource 的重采样会静默失败，输出全 0 数据（RMS=0.0000）。
+            // 正确做法：让 AudioContext 使用原生采样率（通常 44100/48000），采集后手动重采样到 16000Hz。
+            const TARGET_SAMPLE_RATE = 16000; // Whisper 模型要求的采样率
             const CHUNK_DURATION = 10; // 秒（每 10 秒切一段送去 Worker 识别）
-            const BUFFER_SIZE = SAMPLE_RATE * CHUNK_DURATION;
+            const TARGET_BUFFER_SIZE = TARGET_SAMPLE_RATE * CHUNK_DURATION; // 160000 样本
 
             const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-            this._whisperAudioContext = new AudioContextCtor({ sampleRate: SAMPLE_RATE });
+            this._whisperAudioContext = new AudioContextCtor(); // 使用默认采样率
+            const nativeSampleRate = this._whisperAudioContext.sampleRate;
+            console.log('[Whisper] AudioContext 原生采样率:', nativeSampleRate, '目标:', TARGET_SAMPLE_RATE);
             const source = this._whisperAudioContext.createMediaStreamSource(stream);
             const analyser = this._whisperAudioContext.createAnalyser();
             analyser.fftSize = 16384;
             source.connect(analyser);
 
             // 重置缓冲区和队列状态
-            this._whisperAudioBuffer = new Float32Array(BUFFER_SIZE);
+            // _whisperAudioBuffer 存储重采样后的 16000Hz 数据
+            this._whisperAudioBuffer = new Float32Array(TARGET_BUFFER_SIZE);
             this._whisperBufferIndex = 0;
             this._whisperPendingChunks = new Map();
             this._whisperChunkId = 0;
             this._whisperNextFlushId = 0;
             this._whisperWorkerBusy = false;
+            // 重采样残留：原生采样率的样本数可能不是整数倍，保留余数下次处理
+            this._whisperResampleCarry = 0;
 
             // 使用 ScriptProcessorNode 采集音频
             const processor = this._whisperAudioContext.createScriptProcessor(4096, 1, 1);
@@ -1642,20 +1650,38 @@ class Recorder {
             processor.onaudioprocess = (e) => {
                 if (!this.isRecording) return;
                 const inputData = e.inputBuffer.getChannelData(0);
-                for (let i = 0; i < inputData.length; i++) {
-                    if (this._whisperBufferIndex < BUFFER_SIZE) {
-                        this._whisperAudioBuffer[this._whisperBufferIndex++] = inputData[i];
+                // 重采样：从 nativeSampleRate → TARGET_SAMPLE_RATE (16000)
+                // 使用线性插值，简单但足够用（Whisper 对采样率精度要求不高）
+                // 累积分数法：避免每个 chunk 边界处的样本丢失
+                const ratio = nativeSampleRate / TARGET_SAMPLE_RATE;
+                let pos = this._whisperResampleCarry;
+                const resampled = [];
+                while (pos < inputData.length) {
+                    const idx = Math.floor(pos);
+                    const frac = pos - idx;
+                    if (idx + 1 < inputData.length) {
+                        resampled.push(inputData[idx] * (1 - frac) + inputData[idx + 1] * frac);
+                    } else {
+                        resampled.push(inputData[idx]);
+                    }
+                    pos += ratio;
+                }
+                this._whisperResampleCarry = pos - inputData.length;
+
+                // 写入目标缓冲区
+                for (let i = 0; i < resampled.length; i++) {
+                    if (this._whisperBufferIndex < TARGET_BUFFER_SIZE) {
+                        this._whisperAudioBuffer[this._whisperBufferIndex++] = resampled[i];
                     } else {
                         // 缓冲区已满：切片送入队列，重置索引继续写入
-                        // 注意：用 slice 创建副本，避免 Worker 处理时主线程继续写入同一 buffer 导致数据竞争
-                        const chunk = this._whisperAudioBuffer.slice(0, BUFFER_SIZE);
-                        this._enqueueWhisperChunk(chunk, SAMPLE_RATE);
+                        const chunk = this._whisperAudioBuffer.slice(0, TARGET_BUFFER_SIZE);
+                        this._enqueueWhisperChunk(chunk, TARGET_SAMPLE_RATE);
                         this._whisperBufferIndex = 0;
-                        this._whisperAudioBuffer[this._whisperBufferIndex++] = inputData[i];
+                        this._whisperAudioBuffer[this._whisperBufferIndex++] = resampled[i];
                     }
                 }
             };
-            console.log('[Whisper] onaudioprocess 已注册，BUFFER_SIZE=', BUFFER_SIZE);
+            console.log('[Whisper] onaudioprocess 已注册，TARGET_BUFFER_SIZE=', TARGET_BUFFER_SIZE);
             analyser.connect(processor);
             // 不能直接 connect(destination)，否则麦克风音频会从扬声器播放产生回声/啸叫
             // ScriptProcessorNode 必须连接 destination 才能触发 onaudioprocess
@@ -1669,10 +1695,10 @@ class Recorder {
             // 即使缓冲区没满，也定期识别，避免用户停顿时间长但话已说完
             this._whisperRecognizeInterval = setInterval(() => {
                 if (!this.isRecording) return;
-                if (this._whisperBufferIndex < SAMPLE_RATE * 3) return; // 至少 3 秒才识别
+                if (this._whisperBufferIndex < TARGET_SAMPLE_RATE * 3) return; // 至少 3 秒才识别
                 const chunk = this._whisperAudioBuffer.slice(0, this._whisperBufferIndex);
                 this._whisperBufferIndex = 0;
-                this._enqueueWhisperChunk(chunk, SAMPLE_RATE);
+                this._enqueueWhisperChunk(chunk, TARGET_SAMPLE_RATE);
             }, CHUNK_DURATION * 1000);
 
             return true;
