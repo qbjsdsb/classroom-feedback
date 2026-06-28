@@ -362,25 +362,8 @@ class SherpaProvider extends (SpeechProvider || class {}) {
             if (statusEl) statusEl.textContent = 'Sherpa：正在初始化 WASM 运行时...';
             this._module = await this._initWasm();
 
-            // 4. 创建 VAD
-            // 使用默认配置：Silero VAD, threshold=0.5, windowSize=512(32ms@16kHz)
-            this._vad = createVad(this._module);
-
-            // 5. 创建 CircularBuffer（30 秒容量）
-            this._buffer = new CircularBuffer(30 * 16000, this._module);
-
-            // 6. 创建 OfflineRecognizer（SenseVoice 配置）
-            const config = {
-                modelConfig: {
-                    debug: 0,
-                    tokens: './tokens.txt',
-                    senseVoice: {
-                        model: './sense-voice.onnx',
-                        useInverseTextNormalization: 1, // 启用 ITN（标点恢复）
-                    },
-                },
-            };
-            this._recognizer = new OfflineRecognizer(config, this._module);
+            // 4-6. 创建 VAD / CircularBuffer / OfflineRecognizer
+            this._createRecognizer();
 
             this._loaded = true;
             this.isReady = true;
@@ -397,6 +380,37 @@ class SherpaProvider extends (SpeechProvider || class {}) {
         } finally {
             this._loading = false;
         }
+    }
+
+    /**
+     * 创建 VAD / CircularBuffer / OfflineRecognizer
+     * 复用 _module（WASM 运行时）和 _modelFiles（已缓存的模型文件）
+     * - preload 首次创建
+     * - start 检测到 recognizer 为 null 时重建（stop(isFullStop=true) 会释放）
+     */
+    _createRecognizer() {
+        if (!this._module) {
+            throw new Error('WASM 运行时未初始化，无法创建 recognizer');
+        }
+
+        // VAD：使用默认配置（Silero VAD, threshold=0.5, windowSize=512=32ms@16kHz）
+        this._vad = createVad(this._module);
+
+        // CircularBuffer（30 秒容量）
+        this._buffer = new CircularBuffer(30 * 16000, this._module);
+
+        // OfflineRecognizer（SenseVoice 配置）
+        const config = {
+            modelConfig: {
+                debug: 0,
+                tokens: './tokens.txt',
+                senseVoice: {
+                    model: './sense-voice.onnx',
+                    useInverseTextNormalization: 1, // 启用 ITN（标点恢复）
+                },
+            },
+        };
+        this._recognizer = new OfflineRecognizer(config, this._module);
     }
 
     // ========== 音频重采样（原生采样率 → 16kHz） ==========
@@ -501,6 +515,20 @@ class SherpaProvider extends (SpeechProvider || class {}) {
             this._log('warn', 'Sherpa模型未加载，开始预加载');
             await this.preload();
             if (!this._loaded) return false;
+        }
+
+        // stop(isFullStop=true) 会释放 recognizer/vad/buffer 但保留 _module 和 _modelFiles
+        // 此处检测到 recognizer 为 null 时重建（复用 WASM 运行时和模型缓存，无需重新下载）
+        if (!this._recognizer || !this._vad || !this._buffer) {
+            try {
+                this._createRecognizer();
+                this._log('info', 'Sherpa recognizer 重建完成（复用 WASM 与模型缓存）');
+            } catch (err) {
+                console.error('[Sherpa] recognizer 重建失败:', err);
+                this._log('error', 'Sherpa recognizer 重建失败', err.message);
+                UI.showToast('Sherpa 重建识别器失败：' + err.message);
+                return false;
+            }
         }
 
         try {
@@ -627,6 +655,17 @@ class SherpaProvider extends (SpeechProvider || class {}) {
             UI.showToast('Sherpa 模型未加载，正在加载...');
             await this.preload();
             if (!this._loaded) return false;
+        }
+
+        // 与 start() 同理：stop(isFullStop=true) 释放 recognizer 后需重建
+        if (!this._recognizer || !this._vad || !this._buffer) {
+            try {
+                this._createRecognizer();
+            } catch (err) {
+                console.error('[Sherpa] importFile recognizer 重建失败:', err);
+                UI.showToast('Sherpa 重建识别器失败：' + err.message);
+                return false;
+            }
         }
 
         const progressEl = document.getElementById('audio-import-progress');
