@@ -1,0 +1,5 @@
+# Cloudflare Pages 部署忽略文件（语法同 .gitignore）
+# 单文件 25MB 限制，排除超大的 ONNX 模型文件
+# Whisper 引擎会自动探测本地模型不可用，切换到 hf-mirror.com 远程加载
+vendor/whisper-tiny/onnx/decoder_model_merged_quantized.onnx
+vendor/whisper-tiny/onnx/encoder_model_quantized.onnx

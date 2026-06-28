@@ -68,6 +68,7 @@ class Recorder {
         this._voskProvider = new VoskProvider(this);
         this._sherpaProvider = new SherpaProvider(this);
         this._resolvedAutoProvider = null; // Auto 模式会话内缓存（start→pause→resume 保持一致，stop 清除）
+        this._failedAutoProviders = new Set(); // Auto 模式本会话 start() 失败的引擎 ID（stop 清除，用于自动降级）
         this._whisperPausedDuration = 0; // 已暂停时长（resume 时扣除，供 browser/whisper 分支共用）
         this._initVisibilityHandler();
         // 页面卸载前刷新日志缓冲区，避免丢失未持久化的 warn/error 日志
@@ -1012,7 +1013,7 @@ class Recorder {
         this._log('info', '开始录音', `provider=${speechConfig.provider}`);
         const _localProvider = this._getActiveLocalProvider();
         if (_localProvider) {
-            // 使用本地AI识别（Whisper / Vosk / ...）
+            // 使用本地AI识别（Whisper / Vosk / Sherpa）
             this._isStarting = true; // 防重入保护
             // 即时 UI 反馈：getUserMedia 是异步的，等待期间立即更新按钮状态
             // 避免用户以为卡死而重复点击（双击会导致 toggle 走 pause 分支）
@@ -1020,7 +1021,7 @@ class Recorder {
             const statusEl = document.querySelector('.record-status');
             if (statusEl) statusEl.textContent = '正在启动本地AI识别...';
             try {
-                this.shouldRestart = false; // Whisper不需要自动重启
+                this.shouldRestart = false; // 本地引擎不需要自动重启
                 this._userIntendsToRecord = true; // 标记用户意图录音（语义一致性）
                 this.sessionStartTime = Date.now();
                 const textarea = document.getElementById('transcript');
@@ -1032,27 +1033,43 @@ class Recorder {
                 if (recordPage && typeof recordPage.startClassTimer === 'function') {
                     recordPage.startClassTimer();
                 }
-                const started = await _localProvider.start({
-                    onResult: (text) => this._appendResult(text),
-                    onError: (err) => this._log('error', '本地识别错误', err.message)
-                });
+                // Auto 模式自动降级：依次尝试降级链中的引擎，直到有一个成功
+                // 非 Auto 模式只尝试用户选定的引擎一次
+                let currentProvider = _localProvider;
+                let started = false;
+                const isAuto = speechConfig.provider === 'auto';
+                while (currentProvider) {
+                    if (statusEl) statusEl.textContent = `正在启动${currentProvider.displayName}...`;
+                    started = await this._tryStartLocalProvider(currentProvider);
+                    if (started) break;
+                    // 启动失败
+                    this._log('warn', '本地引擎启动失败', `${currentProvider.id} start()返回false`);
+                    if (!isAuto) break; // 非 Auto 模式不降级
+                    // Auto 模式：标记失败，尝试降级链中下一个引擎
+                    this._failedAutoProviders.add(currentProvider.id);
+                    this._resolvedAutoProvider = null; // 清除缓存，让 _getActiveLocalProvider 重新评估
+                    const next = this._getActiveLocalProvider();
+                    if (next && next.id !== currentProvider.id) {
+                        UI.showToast(`${currentProvider.displayName} 启动失败，正在尝试 ${next.displayName}...`);
+                        this._log('info', 'Auto降级', `${currentProvider.id} → ${next.id}`);
+                        currentProvider = next;
+                        continue;
+                    }
+                    currentProvider = null; // 降级链耗尽
+                }
                 this.isRecording = started;
                 if (started) {
                     if (statusEl) statusEl.textContent = '正在录音，点击暂停';
                     this.startTimer();
                 } else {
-                    // 启动失败：恢复按钮状态
+                    // 所有尝试都失败：恢复按钮状态
                     UI.updateRecordButton(false);
                     this.sessionStartTime = null;
                     this._userIntendsToRecord = false; // 启动失败，清除意图标志
-                    // Auto 模式启动失败：清除缓存，避免下次重复选中失败的引擎
-                    // 注意：isSupported() 是静态环境检测，不会因 start 失败而变化，
-                    // 所以 Auto 仍会选中同一引擎。此处清除缓存仅为保持状态干净，
-                    // 并提示用户手动切换引擎（不自动降级，避免行为不可预测）
-                    if (speechConfig.provider === 'auto') {
-                        this._resolvedAutoProvider = null;
-                        UI.showToast(`${_localProvider.displayName} 启动失败，请在设置中手动选择其他引擎`);
-                        this._log('warn', 'Auto引擎启动失败', `${_localProvider.id} start()返回false`);
+                    if (isAuto) {
+                        UI.showToast('所有本地AI引擎启动失败，请在设置中手动选择引擎');
+                    } else {
+                        UI.showToast(`${_localProvider.displayName} 启动失败，请在设置中选择其他引擎`);
                     }
                 }
             } catch (err) {
@@ -1453,26 +1470,56 @@ class Recorder {
     }
 
     /**
-     * Auto 模式：按优先级降级选择第一个 isSupported() 的本地 Provider
-     * 降级链：Sherpa → Vosk → Whisper → null（走浏览器原生）
-     * - Sherpa：SenseVoice 50+语种、70ms/10s、内置标点，准确率最高，但需 crossOriginIsolated（COOP/COEP）
-     * - Vosk：流式实时输出、模型小（43MB）、兼容性好
-     * - Whisper：离线、99+语言，但分段批量识别有延迟
+     * Auto 模式：按优先级降级选择第一个 isSupported() 且本会话未失败的本地 Provider
+     * 降级链：Vosk → Whisper → Sherpa → null（走浏览器原生）
+     * - Vosk：流式实时输出、模型小（43MB）、兼容性好、加载快，作为默认首选
+     * - Whisper：离线、99+语言，但分段批量识别有延迟，模型约 30MB
+     * - Sherpa：SenseVoice 50+语种、70ms/10s、内置标点，准确率最高，但模型巨大（229MB），
+     *           下载耗时长易失败，作为最后兜底（仅当 Vosk/Whisper 都不可用时才尝试）
+     *
+     * 注：早期版本优先级为 Sherpa→Vosk→Whisper，但 Sherpa 229MB 模型在 COOP/COEP 生效后
+     *     isSupported() 返回 true，导致 Auto 默认选中 Sherpa，巨大的模型下载让用户感觉"全不能用"。
+     *     现改为 Vosk 优先，并在 start() 失败时自动降级到下一个引擎（见 _failedAutoProviders）。
+     *
      * @returns {{provider: SpeechProvider, reason: string} | null}
      */
     _resolveAutoProvider() {
         const candidates = [
-            { p: this._sherpaProvider, name: 'Sherpa' },
             { p: this._voskProvider, name: 'Vosk' },
             { p: this._whisperProvider, name: 'Whisper' },
+            { p: this._sherpaProvider, name: 'Sherpa' },
         ];
         for (const c of candidates) {
-            if (c.p && typeof c.p.isSupported === 'function' && c.p.isSupported()) {
-                return { provider: c.p, reason: `Auto→${c.name}` };
+            if (!c.p || typeof c.p.isSupported !== 'function' || !c.p.isSupported()) continue;
+            // 跳过本会话 start() 已失败的引擎，实现 Auto 模式自动降级
+            if (this._failedAutoProviders.has(c.p.id)) {
+                this._log('info', 'Auto降级链', `${c.name} 本会话已失败，跳过`);
+                continue;
             }
+            return { provider: c.p, reason: `Auto→${c.name}` };
         }
-        this._log('info', 'Auto降级链', '三个本地引擎均不支持，降级到浏览器原生');
+        this._log('info', 'Auto降级链', '所有本地引擎均不支持或已失败，降级到浏览器原生');
         return null;
+    }
+
+    /**
+     * 尝试启动单个本地 Provider（Auto 降级链的核心单元）
+     * 统一封装回调注入与异常捕获，返回是否启动成功。
+     * start() 在 Auto 模式下会循环调用此方法，失败则切换下一个引擎。
+     * @param {SpeechProvider} provider
+     * @returns {Promise<boolean>}
+     */
+    async _tryStartLocalProvider(provider) {
+        try {
+            const started = await provider.start({
+                onResult: (text) => this._appendResult(text),
+                onError: (err) => this._log('error', '本地识别错误', err.message)
+            });
+            return !!started;
+        } catch (err) {
+            this._log('error', `${provider.displayName} 启动异常`, err.message);
+            return false;
+        }
     }
 
     /**
@@ -1600,6 +1647,7 @@ class Recorder {
             // 清除 Auto 降级缓存：下次 start 重新评估环境
             // （适应运行时环境变化，如用户部署了 COOP/COEP 后 Sherpa 变为可用）
             this._resolvedAutoProvider = null;
+            this._failedAutoProviders.clear(); // 新会话重置失败记录，让所有引擎重新参与评估
 
             // 不 terminate Worker（保留 pipeline，下次录音直接用）
             return;
