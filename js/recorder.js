@@ -66,6 +66,7 @@ class Recorder {
         // 初始化语音识别 Provider（Whisper 已抽离到 js/speech/whisperProvider.js）
         this._whisperProvider = new WhisperProvider(this);
         this._voskProvider = new VoskProvider(this);
+        this._sherpaProvider = new SherpaProvider(this);
         this._whisperPausedDuration = 0; // 已暂停时长（resume 时扣除，供 browser/whisper 分支共用）
         this._initVisibilityHandler();
         // 页面卸载前刷新日志缓冲区，避免丢失未持久化的 warn/error 日志
@@ -1425,6 +1426,7 @@ class Recorder {
         const provider = Storage.getSpeechConfig().provider;
         if (provider === 'whisper') return this._whisperProvider;
         if (provider === 'vosk') return this._voskProvider;
+        if (provider === 'sherpa') return this._sherpaProvider;
         return null;
     }
 
@@ -1541,9 +1543,10 @@ class Recorder {
         }
 
         // 浏览器模式：原有的 SpeechRecognition 停止逻辑
-        // 兜底停止所有本地 Provider（防止 Whisper/Vosk 资源残留）
+        // 兜底停止所有本地 Provider（防止 Whisper/Vosk/Sherpa 资源残留）
         this._whisperProvider.stop();
         this._voskProvider.stop();
+        this._sherpaProvider.stop();
         this.commitTranscript();
         this.stopTimer();
 
