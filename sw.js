@@ -1,5 +1,5 @@
 // Service Worker - 课堂反馈助手离线缓存
-const CACHE_NAME = 'classroom-feedback-v1.9.68';
+const CACHE_NAME = 'classroom-feedback-v1.9.69';
 
 // 需要缓存的静态资源（同时包含 /tutorial 兼容 Cloudflare Pretty URL）
 const STATIC_ASSETS = [
@@ -33,21 +33,10 @@ const STATIC_ASSETS = [
     '/js/pages/studentsPage.js',
     '/js/pages/subjectSelectPage.js',
     '/vendor/transformers.min.js',
-    // Whisper-tiny 本地模型文件（量化版，共约 41MB）
-    // 离线加载，避免依赖 hf-mirror.com → cas-bridge.xethub.hf.co 的重定向
-    // （xet CDN 在国内被墙，浏览器无法访问）
-    '/vendor/whisper-tiny/config.json',
-    '/vendor/whisper-tiny/generation_config.json',
-    '/vendor/whisper-tiny/preprocessor_config.json',
-    '/vendor/whisper-tiny/tokenizer.json',
-    '/vendor/whisper-tiny/tokenizer_config.json',
-    '/vendor/whisper-tiny/special_tokens_map.json',
-    '/vendor/whisper-tiny/added_tokens.json',
-    '/vendor/whisper-tiny/normalizer.json',
-    '/vendor/whisper-tiny/merges.txt',
-    '/vendor/whisper-tiny/vocab.json',
-    '/vendor/whisper-tiny/onnx/encoder_model_quantized.onnx',
-    '/vendor/whisper-tiny/onnx/decoder_model_merged_quantized.onnx',
+    // Whisper-tiny 模型文件不再预缓存：
+    // - Cloudflare Pages 单文件 25MB 限制，30MB 的 onnx 模型不会部署
+    // - Whisper 引擎会自动探测本地模型不可用，切换到 hf-mirror.com 远程加载
+    // - 远程加载后 transformers.js 会自动缓存到浏览器 Cache Storage
     '/manifest.json'
 ];
 

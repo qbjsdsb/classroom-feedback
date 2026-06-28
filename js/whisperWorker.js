@@ -7,12 +7,19 @@ let isLoading = false;
 
 /**
  * 加载 Whisper pipeline
+ * 支持两种加载模式：
+ * - 本地模式（localFilesOnly=true）：从同源 /vendor/whisper-tiny 加载，适用于模型文件部署在站点的场景
+ * - 远程模式（localFilesOnly=false）：从 HuggingFace 镜像加载，适用于模型文件未部署在站点的场景
+ *   （如 Cloudflare Pages 单文件 25MB 限制，无法托管 30MB 的 decoder_model_merged_quantized.onnx）
+ *
  * @param {Object} payload
- * @param {string} payload.modelPath - 模型完整路径（绕过 transformers.js v3.4.1 的 localModelPath bug）
+ * @param {string} payload.modelPath - 模型路径（本地模式为完整路径，远程模式为 HF 模型 ID）
  * @param {string} payload.wasmPaths - ONNX Runtime WASM 文件路径
- * @param {string} payload.localModelPath - env.localModelPath（保留兼容）
+ * @param {string} payload.localModelPath - env.localModelPath（本地模式用）
+ * @param {boolean} payload.localFilesOnly - 是否仅从本地加载（true=本地，false=远程）
+ * @param {string} payload.remoteHost - 远程模型主机（默认 hf-mirror.com 国内镜像）
  */
-async function loadPipeline({ modelPath, wasmPaths, localModelPath }) {
+async function loadPipeline({ modelPath, wasmPaths, localModelPath, localFilesOnly = true, remoteHost }) {
     if (pipeline || isLoading) return;
     isLoading = true;
     try {
@@ -21,9 +28,20 @@ async function loadPipeline({ modelPath, wasmPaths, localModelPath }) {
 
         // 配置环境
         if (transformers.env) {
-            transformers.env.allowLocalModels = true;
-            transformers.env.allowRemoteModels = false;
-            if (localModelPath) transformers.env.localModelPath = localModelPath;
+            // 远程模式：allowRemoteModels=true + remoteHost 指向国内镜像
+            // 本地模式：allowRemoteModels=false + allowLocalModels=true
+            if (localFilesOnly) {
+                transformers.env.allowLocalModels = true;
+                transformers.env.allowRemoteModels = false;
+                if (localModelPath) transformers.env.localModelPath = localModelPath;
+            } else {
+                transformers.env.allowLocalModels = false;
+                transformers.env.allowRemoteModels = true;
+                // 国内镜像 hf-mirror.com，避免 huggingface.co 被墙
+                if (remoteHost) {
+                    transformers.env.remoteHost = remoteHost;
+                }
+            }
 
             // ONNX Runtime WASM 路径
             const onnxEnv = transformers.env.backends?.onnx;
@@ -33,18 +51,25 @@ async function loadPipeline({ modelPath, wasmPaths, localModelPath }) {
             }
         }
 
-        console.log('[WhisperWorker] 开始加载 pipeline, modelPath=', modelPath);
+        console.log('[WhisperWorker] 开始加载 pipeline, modelPath=', modelPath,
+            'mode=', localFilesOnly ? 'local' : 'remote',
+            'remoteHost=', remoteHost || '(default)');
 
-        // 传完整路径作为 modelId，绕过 transformers.js v3.4.1 localModelPath bug
+        // 远程模式不传 local_files_only（默认 false 会走远程）
+        // 本地模式传 local_files_only=true 强制只从本地加载
+        const pipelineOptions = {
+            progress_callback: (progress) => {
+                self.postMessage({ type: 'progress', progress });
+            }
+        };
+        if (localFilesOnly) {
+            pipelineOptions.local_files_only = true;
+        }
+
         pipeline = await transformers.pipeline(
             'automatic-speech-recognition',
             modelPath,
-            {
-                local_files_only: true,
-                progress_callback: (progress) => {
-                    self.postMessage({ type: 'progress', progress });
-                }
-            }
+            pipelineOptions
         );
 
         console.log('[WhisperWorker] pipeline 加载完成');

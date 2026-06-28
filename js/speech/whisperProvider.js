@@ -65,14 +65,41 @@ class WhisperProvider extends (SpeechProvider || class {}) {
             // 适配 GitHub Pages 子路径部署（如 https://user.github.io/repo/）
             const _loc = window.location.pathname;
             const _basePath = _loc.replace(/[^/]*$/, '').replace(/\/$/, '');
-            const _modelPath = _basePath + '/vendor/whisper-tiny';
-            const _localModelPath = _basePath + '/vendor';
+            const _localModelPath = _basePath + '/vendor/whisper-tiny';
             const _wasmPaths = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.1/dist/';
             console.log('[Whisper] 站点根路径:', _basePath || '(根部署)');
-            console.log('[Whisper] 模型完整路径:', _modelPath);
 
             const statusEl = document.getElementById('whisper-model-status');
             if (statusEl) statusEl.textContent = '模型状态：正在加载...';
+
+            // 探测本地模型是否可用：GET 请求 config.json 并验证内容
+            // Cloudflare Pages 单文件 25MB 限制，30MB 的 onnx 模型不会部署
+            // 此时自动切换到远程模式（hf-mirror.com 国内镜像），无需手动配置
+            // 注意：Cloudflare Pages 对未部署文件会返回 200 + SPA 兜底页（HTML 内容），
+            //       即使扩展名是 .json，content-type 也可能是 application/json（按扩展名推断），
+            //       所以必须读取内容并解析 JSON，检查是否包含 whisper 模型配置字段
+            let _localFilesOnly = true;
+            let _modelPath = _localModelPath;
+            let _remoteHost = null;
+            try {
+                const probeResp = await fetch(_localModelPath + '/config.json');
+                if (!probeResp.ok) {
+                    throw new Error(`HTTP ${probeResp.status}`);
+                }
+                const text = await probeResp.text();
+                const config = JSON.parse(text);  // SPA 兜底页是 HTML，JSON.parse 会抛错
+                // whisper 模型 config.json 必含 model_type 字段（如 "whisper"）
+                if (!config || !config.model_type) {
+                    throw new Error('config.json 缺少 model_type 字段');
+                }
+                console.log('[Whisper] 本地模型可用，使用本地模式，model_type=', config.model_type);
+            } catch (probeErr) {
+                console.warn('[Whisper] 本地模型不可用，切换到远程模式（hf-mirror.com）:', probeErr.message);
+                _localFilesOnly = false;
+                _modelPath = 'Xenova/whisper-tiny';  // HuggingFace 上的 whisper-tiny 模型 ID
+                _remoteHost = 'https://hf-mirror.com/';  // 国内镜像，避免 huggingface.co 被墙
+                if (statusEl) statusEl.textContent = '模型状态：从镜像下载（首次约40MB）...';
+            }
 
             // 创建 Worker（type: 'module' 支持 ES module import）
             this._worker = new Worker(_basePath + '/js/whisperWorker.js', { type: 'module' });
@@ -81,8 +108,8 @@ class WhisperProvider extends (SpeechProvider || class {}) {
             // 等待 Worker 加载完成
             const readyPromise = new Promise((resolve, reject) => {
                 const timeout = setTimeout(() => {
-                    reject(new Error('模型加载超时（60秒），请检查网络后重试'));
-                }, 60000);
+                    reject(new Error('模型加载超时（120秒），请检查网络后重试'));
+                }, 120000);  // 远程下载可能较慢，超时从 60s 提升到 120s
 
                 this._worker.onmessage = (e) => {
                     const msg = e.data;
@@ -115,7 +142,9 @@ class WhisperProvider extends (SpeechProvider || class {}) {
             this._worker.postMessage({
                 type: 'load',
                 modelPath: _modelPath,
-                localModelPath: _localModelPath,
+                localModelPath: _basePath + '/vendor',
+                localFilesOnly: _localFilesOnly,
+                remoteHost: _remoteHost,
                 wasmPaths: _wasmPaths
             });
 

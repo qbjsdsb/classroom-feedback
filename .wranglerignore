@@ -1,0 +1,16 @@
+# .wranglerignore - Cloudflare Pages 部署时排除的文件
+# 单文件 25MB 限制，无法托管 Whisper ONNX 模型（30MB）
+# Whisper 引擎会自动探测本地模型不可用，切换到 hf-mirror.com 远程加载
+
+# Whisper ONNX 模型文件（30MB + 9.7MB，超过 25MB 限制）
+vendor/whisper-tiny/onnx/decoder_model_merged_quantized.onnx
+vendor/whisper-tiny/onnx/encoder_model_quantized.onnx
+
+# git 元数据
+.git
+.gitignore
+.github
+
+# 开发文档和脚本
+*.md
+NODEPLOY*
