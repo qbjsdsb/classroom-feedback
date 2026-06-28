@@ -1,0 +1,16 @@
+# Cloudflare Pages Headers
+# 启用 Cross-Origin Isolated 环境，让 Sherpa-onnx WASM 引擎可用（需要 SharedArrayBuffer）
+#
+# COEP 用 credentialless 而非 require-corp：
+# - require-corp 要求所有跨域资源返回 CORP/CORS 头，会破坏动态 <script> 加载（sherpaProvider._loadScript 未设 crossorigin）
+# - credentialless 不要求跨域资源返回任何头，兼容 jsdelivr/HuggingFace/alphacephei 的资源加载
+# - 浏览器支持：Chrome/Edge 96+，Safari 16.4+；Firefox 不支持（Sherpa 不可用，Auto 降级链自动跳过）
+#
+# 影响范围：
+# - Sherpa：可用（COOP/COEP 启用 crossOriginIsolated）
+# - Vosk：可用（CDN 和模型源支持 CORS）
+# - Whisper：可用（模型从同源 /vendor/ 加载）
+# - 浏览器原生：可用（Web Speech API 不受 COEP 影响）
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: credentialless

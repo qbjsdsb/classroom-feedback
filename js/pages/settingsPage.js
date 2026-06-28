@@ -58,17 +58,35 @@ class SettingsPage {
                     <h3 style="font-size:1.05rem;font-weight:700;">🎤 语音识别</h3>
                     <div class="form-group">
                         <div class="speech-provider-list">
+                            <label class="style-option ${speechConfig.provider === 'auto' ? 'active' : ''}">
+                                <input type="radio" name="speech-provider" value="auto" ${speechConfig.provider === 'auto' ? 'checked' : ''}>
+                                <span class="style-icon">⚡</span>
+                                <span class="style-name">智能选择</span>
+                                <span class="style-desc">自动降级，推荐</span>
+                            </label>
+                            <label class="style-option ${speechConfig.provider === 'sherpa' ? 'active' : ''}">
+                                <input type="radio" name="speech-provider" value="sherpa" ${speechConfig.provider === 'sherpa' ? 'checked' : ''}>
+                                <span class="style-icon">🎯</span>
+                                <span class="style-name">Sherpa</span>
+                                <span class="style-desc">最准，需COOP/COEP</span>
+                            </label>
+                            <label class="style-option ${speechConfig.provider === 'vosk' ? 'active' : ''}">
+                                <input type="radio" name="speech-provider" value="vosk" ${speechConfig.provider === 'vosk' ? 'checked' : ''}>
+                                <span class="style-icon">🎙️</span>
+                                <span class="style-name">Vosk</span>
+                                <span class="style-desc">流式实时，43MB</span>
+                            </label>
+                            <label class="style-option ${speechConfig.provider === 'whisper' ? 'active' : ''}">
+                                <input type="radio" name="speech-provider" value="whisper" ${speechConfig.provider === 'whisper' ? 'checked' : ''}>
+                                <span class="style-icon">🤖</span>
+                                <span class="style-name">Whisper</span>
+                                <span class="style-desc">离线，99+语言，40MB</span>
+                            </label>
                             <label class="style-option ${speechConfig.provider === 'browser' ? 'active' : ''}">
                                 <input type="radio" name="speech-provider" value="browser" ${speechConfig.provider === 'browser' ? 'checked' : ''}>
                                 <span class="style-icon">🌐</span>
                                 <span class="style-name">浏览器内置</span>
                                 <span class="style-desc">免费，需联网</span>
-                            </label>
-                            <label class="style-option ${speechConfig.provider === 'whisper' ? 'active' : ''}">
-                                <input type="radio" name="speech-provider" value="whisper" ${speechConfig.provider === 'whisper' ? 'checked' : ''}>
-                                <span class="style-icon">🤖</span>
-                                <span class="style-name">本地AI</span>
-                                <span class="style-desc">离线，首次下载模型</span>
                             </label>
                         </div>
                     </div>
@@ -325,8 +343,72 @@ class SettingsPage {
     }
 
     renderSpeechConfigFields(config) {
+        if (config.provider === 'auto') {
+            return `
+                <div style="padding:12px;background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--border-light);">
+                    <p class="hint-text" style="margin-bottom:8px;">
+                        ⚡ <strong>智能选择</strong>（自动降级，推荐大多数用户）
+                    </p>
+                    <p class="hint-text" style="margin-bottom:6px;">
+                        按优先级自动选择最优可用的本地引擎，都不支持时降级到浏览器内置：<br>
+                        ① Sherpa-onnx（SenseVoice，50+语种，需 COOP/COEP 环境）<br>
+                        ② Vosk（流式实时输出，模型约43MB）<br>
+                        ③ Whisper（离线，99+语言，模型约40MB）<br>
+                        ④ 浏览器内置（需联网）
+                    </p>
+                    <p class="hint-text" style="margin-bottom:0;">
+                        ℹ️ GitHub Pages 默认不支持 Sherpa（无 COOP/COEP 头），将自动降级到 Vosk。
+                        录音开始时控制台日志会显示实际选中的引擎。
+                    </p>
+                </div>
+            `;
+        }
+
         if (config.provider === 'browser') {
             return `<p class="hint-text">使用浏览器内置语音识别（Web Speech API），无需额外配置。推荐使用 Edge 浏览器获得最佳效果，Chrome 也可以正常使用。</p>`;
+        }
+
+        if (config.provider === 'sherpa') {
+            return `
+                <div style="padding:12px;background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--border-light);">
+                    <p class="hint-text" style="margin-bottom:8px;">
+                        🎯 <strong>Sherpa-onnx 语音识别</strong>（SenseVoice-Small，int8 量化）
+                    </p>
+                    <p class="hint-text" style="margin-bottom:6px;">
+                        ✅ 50+语种，中文识别准确率最高<br>
+                        ✅ 70ms/10s 音频推理，实时性好<br>
+                        ✅ 内置 ITN 标点恢复，无需后处理<br>
+                        ⚠️ 首次需下载 WASM(10MB) + 模型(229MB)，之后缓存<br>
+                        ⚠️ 需要 Cross-Origin Isolated 环境（COOP/COEP 头）<br>
+                        ⚠️ GitHub Pages 默认不支持，需部署到 HF Spaces / Cloudflare Pages
+                    </p>
+                    <div id="sherpa-model-status" style="margin-top:8px;padding:8px;background:var(--bg-secondary);border-radius:var(--radius-sm);font-size:0.85rem;color:var(--text-muted);">
+                        模型状态：未加载
+                    </div>
+                    <button id="btn-preload-sherpa" class="secondary-btn" style="margin-top:8px;width:100%;">预加载 Sherpa 模型（首次使用建议提前下载）</button>
+                </div>
+            `;
+        }
+
+        if (config.provider === 'vosk') {
+            return `
+                <div style="padding:12px;background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--border-light);">
+                    <p class="hint-text" style="margin-bottom:8px;">
+                        🎙️ <strong>Vosk 语音识别</strong>（Kaldi WASM，离线运行）
+                    </p>
+                    <p class="hint-text" style="margin-bottom:6px;">
+                        ✅ 流式实时输出，边说边出文字<br>
+                        ✅ 模型小（约43MB），加载快<br>
+                        ✅ 兼容性好，Safari 表现佳，无需 COOP/COEP<br>
+                        ⚠️ 首次需加载库(5.8MB) + 模型(43MB)，之后缓存<br>
+                        ⚠️ 中文识别准确率略低于 Sherpa/Whisper
+                    </p>
+                    <div id="vosk-model-status" style="margin-top:8px;padding:8px;background:var(--bg-secondary);border-radius:var(--radius-sm);font-size:0.85rem;color:var(--text-muted);">
+                        模型状态：未加载
+                    </div>
+                    <button id="btn-preload-vosk" class="secondary-btn" style="margin-top:8px;width:100%;">预加载 Vosk 模型（首次使用建议提前下载）</button>
+                </div>
+            `;
         }
 
         if (config.provider === 'whisper') {
@@ -350,6 +432,40 @@ class SettingsPage {
         }
 
         return `<p class="hint-text">请选择一个语音识别引擎</p>`;
+    }
+
+    /**
+     * 绑定各引擎的预加载按钮
+     * 由于 renderSpeechConfigFields 用 innerHTML 重新渲染，切换引擎后需重新绑定
+     * 使用可选链 + recorder 存在性检查，避免 recorder 未初始化时报错
+     */
+    _bindPreloadButtons() {
+        const btnWhisper = document.getElementById('btn-preload-whisper');
+        if (btnWhisper) {
+            btnWhisper.addEventListener('click', () => {
+                if (typeof recorder !== 'undefined' && recorder.preloadWhisper) {
+                    recorder.preloadWhisper();
+                }
+            });
+        }
+
+        const btnVosk = document.getElementById('btn-preload-vosk');
+        if (btnVosk) {
+            btnVosk.addEventListener('click', () => {
+                if (typeof recorder !== 'undefined' && recorder.preloadVosk) {
+                    recorder.preloadVosk();
+                }
+            });
+        }
+
+        const btnSherpa = document.getElementById('btn-preload-sherpa');
+        if (btnSherpa) {
+            btnSherpa.addEventListener('click', () => {
+                if (typeof recorder !== 'undefined' && recorder.preloadSherpa) {
+                    recorder.preloadSherpa();
+                }
+            });
+        }
     }
 
     renderSubjectsList() {
@@ -784,21 +900,13 @@ class SettingsPage {
                 });
                 radio.closest('.style-option').classList.add('active');
 
-                // 重新绑定 Whisper 预加载按钮（因为 innerHTML 替换了 DOM）
-                document.getElementById('btn-preload-whisper')?.addEventListener('click', () => {
-                    if (typeof recorder !== 'undefined' && recorder.preloadWhisper) {
-                        recorder.preloadWhisper();
-                    }
-                });
+                // 重新绑定预加载按钮（因为 innerHTML 替换了 DOM，旧监听器随旧 DOM 销毁）
+                this._bindPreloadButtons();
             });
         });
 
-        // Whisper 预加载按钮
-        document.getElementById('btn-preload-whisper')?.addEventListener('click', () => {
-            if (typeof recorder !== 'undefined' && recorder.preloadWhisper) {
-                recorder.preloadWhisper();
-            }
-        });
+        // 初始绑定所有预加载按钮（Whisper/Vosk/Sherpa）
+        this._bindPreloadButtons();
 
         // 主题切换
         document.querySelectorAll('.theme-option').forEach(option => {
