@@ -63,6 +63,9 @@ class Recorder {
         this._persistTimer = null; // 防抖定时器
 
         this.initSpeechRecognition();
+        // 初始化语音识别 Provider（Whisper 已抽离到 js/speech/whisperProvider.js）
+        this._whisperProvider = new WhisperProvider(this);
+        this._whisperPausedDuration = 0; // 已暂停时长（resume 时扣除，供 browser/whisper 分支共用）
         this._initVisibilityHandler();
         // 页面卸载前刷新日志缓冲区，避免丢失未持久化的 warn/error 日志
         window.addEventListener('beforeunload', () => this._flushPersistBuffer());
@@ -1021,7 +1024,14 @@ class Recorder {
                     this.accumulatedText = textarea.value.trim();
                     if (this.accumulatedText) this.accumulatedText += '\n';
                 }
-                const started = await this.startWhisperRecognition();
+                // 启动课堂计时器（原 startWhisperRecognition 内部逻辑，现由 Recorder 统一管理）
+                if (recordPage && typeof recordPage.startClassTimer === 'function') {
+                    recordPage.startClassTimer();
+                }
+                const started = await this._whisperProvider.start({
+                    onResult: (text) => this._appendResult(text),
+                    onError: (err) => this._log('error', 'Whisper识别错误', err.message)
+                });
                 this.isRecording = started;
                 if (started) {
                     if (statusEl) statusEl.textContent = '正在录音，点击暂停';
@@ -1200,7 +1210,7 @@ class Recorder {
         this._log('info', '导入录音文件', `name=${file.name},size=${(file.size/1024).toFixed(0)}KB`);
         const speechConfig = Storage.getSpeechConfig();
         if (speechConfig.provider === 'whisper') {
-            await this.importAudioFileWithWhisper(file);
+            await this._whisperProvider.importFile(file);
             return;
         }
 
@@ -1400,532 +1410,28 @@ class Recorder {
         return names[provider] || provider;
     }
 
-    // Whisper 模型状态
-    _whisperLoading = false;
-    _whisperLoaded = false;
-    _whisperAudioContext = null;
-    _whisperMediaStream = null;
-    _whisperProcessor = null;
-    _whisperAudioBuffer = null;      // 音频缓冲区（支持暂停恢复）
-    _whisperBufferIndex = 0;         // 缓冲区索引
-    _whisperPausedDuration = 0;      // 已暂停的时长（用于恢复计时）
-    // Worker 相关（推理移到 Worker 线程，避免阻塞 UI）
-    _whisperWorker = null;           // Worker 实例
-    _whisperWorkerReady = false;     // Worker 是否就绪（pipeline 加载完成）
-    _whisperChunkId = 0;             // 递增的 chunkId（用于结果顺序匹配）
-    _whisperPendingChunks = new Map(); // 待处理的 chunk 队列（chunkId -> {audio, sampleRate}）
-    _whisperWorkerBusy = false;      // Worker 是否正在推理（互斥锁）
+    // Whisper 状态字段与模型加载逻辑已移至 js/speech/whisperProvider.js
+    // Recorder 通过 this._whisperProvider 调度，文本写入通过 _appendResult 回调
 
-    // 预加载 Whisper 模型（在 Worker 线程中加载，避免阻塞 UI）
+    /**
+     * 预加载 Whisper 模型（代理到 WhisperProvider）
+     */
     async preloadWhisper(onProgress) {
-        if (this._whisperLoaded || this._whisperLoading) {
-            if (this._whisperLoading) UI.showToast('模型正在加载中，请稍候...');
-            return;
-        }
-        this._whisperLoading = true;
-        try {
-            // 适配 GitHub Pages 子路径部署（如 https://user.github.io/repo/）：
-            // 动态计算站点根路径，确保 /vendor 路径在任何部署方式下都正确。
-            const _loc = window.location.pathname;
-            const _basePath = _loc.replace(/[^/]*$/, '').replace(/\/$/, ''); // 去掉文件名和尾部斜杠
-            const _whisperModelPath = _basePath + '/vendor/whisper-tiny';
-            const _localModelPath = _basePath + '/vendor';
-            const _wasmPaths = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.4.1/dist/';
-            console.log('[Whisper] 站点根路径:', _basePath || '(根部署)');
-            console.log('[Whisper] 模型完整路径:', _whisperModelPath);
-
-            const statusEl = document.getElementById('whisper-model-status');
-            if (statusEl) statusEl.textContent = '模型状态：正在加载...';
-
-            // 创建 Worker（type: 'module' 支持 ES module import）
-            // Worker 内部 import transformers.js 并创建 pipeline，避免主线程阻塞
-            this._whisperWorker = new Worker(_basePath + '/js/whisperWorker.js', { type: 'module' });
-            this._whisperWorkerReady = false;
-
-            // 等待 Worker 加载完成
-            const readyPromise = new Promise((resolve, reject) => {
-                const timeout = setTimeout(() => {
-                    reject(new Error('模型加载超时（60秒），请检查网络后重试'));
-                }, 60000);
-
-                this._whisperWorker.onmessage = (e) => {
-                    const msg = e.data;
-                    if (msg.type === 'progress') {
-                        const progress = msg.progress;
-                        if (progress.status === 'initiate') {
-                            console.log('[Whisper] 开始下载文件:', progress.file);
-                        } else if (progress.status === 'progress') {
-                            console.log(`[Whisper] 下载 ${progress.file}: ${Math.round(progress.progress)}%`);
-                        } else if (progress.status === 'done') {
-                            console.log('[Whisper] 文件下载完成:', progress.file);
-                        }
-                        if (statusEl && progress.status) {
-                            const pct = progress.progress ? Math.round(progress.progress) : 0;
-                            statusEl.textContent = `模型状态：${progress.status} ${pct ? pct + '%' : ''}`;
-                        }
-                        if (onProgress) onProgress(progress);
-                    } else if (msg.type === 'ready') {
-                        clearTimeout(timeout);
-                        this._whisperWorkerReady = true;
-                        // 切换到识别消息处理器
-                        this._whisperWorker.onmessage = (e) => this._onWorkerMessage(e);
-                        resolve();
-                    } else if (msg.type === 'error') {
-                        clearTimeout(timeout);
-                        reject(new Error(msg.error));
-                    }
-                };
-                this._whisperWorker.onerror = (e) => {
-                    clearTimeout(timeout);
-                    reject(new Error('Worker 加载失败: ' + (e.message || '未知错误')));
-                };
-            });
-
-            // 发送加载指令
-            this._whisperWorker.postMessage({
-                type: 'load',
-                modelPath: _whisperModelPath,
-                localModelPath: _localModelPath,
-                wasmPaths: _wasmPaths
-            });
-
-            await readyPromise;
-
-            this._whisperLoaded = true;
-            console.log('[Whisper] 模型加载成功（Worker 模式）');
-            if (statusEl) statusEl.textContent = '模型状态：已就绪 ✓';
-            UI.showToast('本地AI语音识别模型加载完成');
-        } catch (err) {
-            console.error('[Whisper] 模型加载失败:', err);
-            const statusEl = document.getElementById('whisper-model-status');
-            if (statusEl) statusEl.textContent = '模型状态：加载失败 - ' + err.message;
-            UI.showToast('模型加载失败：' + err.message);
-            this._log('error', 'Whisper模型加载失败', err.message);
-            // 清理失败的 Worker
-            if (this._whisperWorker) {
-                this._whisperWorker.terminate();
-                this._whisperWorker = null;
-            }
-        } finally {
-            this._whisperLoading = false;
-        }
+        return this._whisperProvider.preload(onProgress);
     }
 
     /**
-     * Worker 消息处理器（识别结果）
-     * 按顺序处理结果：如果某个 chunkId 的结果还没返回，先缓存后续结果，等它返回后按顺序写入
+     * 追加一段识别结果到文本框（供 Provider 通过 onResult 回调调用）
+     * 文本写入逻辑统一在此，Provider 不直接操作 DOM
      */
-    _onWorkerMessage(e) {
-        const msg = e.data;
-        if (msg.type === 'result') {
-            this._whisperWorkerBusy = false;
-            const chunkId = msg.chunkId;
-            const text = msg.text || '';
-            console.log(`[Whisper] 收到结果 chunkId=${chunkId} text="${text}" 队列大小=${this._whisperPendingChunks.size}`);
-
-            // 把结果存入待处理队列
-            this._whisperPendingChunks.set(chunkId, { text, done: true });
-
-            // 按顺序写入：从最小 chunkId 开始，把连续完成的结果写入文本框
-            this._flushPendingChunks();
-
-            // 处理队列中下一个待识别的 chunk
-            this._processNextPendingChunk();
-        } else if (msg.type === 'error') {
-            console.warn('[WhisperWorker] 识别错误:', msg.error);
-            this._whisperWorkerBusy = false;
-            // 跳过当前 chunk，处理下一个
-            this._processNextPendingChunk();
-        }
-    }
-
-    /**
-     * 按顺序把已完成的结果写入文本框
-     * 保证文本顺序与录音顺序一致（避免 Worker 异步返回导致顺序错乱）
-     */
-    _flushPendingChunks() {
-        // 找到当前应该写入的最小 chunkId（即 _whisperNextFlushId）
-        if (this._whisperNextFlushId === undefined) {
-            this._whisperNextFlushId = 0;
-        }
-        while (this._whisperPendingChunks.has(this._whisperNextFlushId)) {
-            const item = this._whisperPendingChunks.get(this._whisperNextFlushId);
-            this._whisperPendingChunks.delete(this._whisperNextFlushId);
-            if (item.text) {
-                // 文本去重：如果新文本是已有文本的子串前缀，跳过（Whisper 重复识别）
-                const existing = this.accumulatedText;
-                if (existing.endsWith(item.text)) {
-                    console.log(`[Whisper] chunkId=${this._whisperNextFlushId} 文本重复跳过`);
-                    // 完全重复，跳过
-                } else {
-                    this.accumulatedText += item.text;
-                    console.log(`[Whisper] 写入文本 chunkId=${this._whisperNextFlushId} 累计${this.accumulatedText.length}字`);
-                    this.updateDisplay();
-                    const textarea = document.getElementById('transcript');
-                    if (textarea) {
-                        textarea.value = this.accumulatedText;
-                        textarea.scrollTop = textarea.scrollHeight;
-                    }
-                }
-            } else {
-                console.log(`[Whisper] chunkId=${this._whisperNextFlushId} 空文本跳过`);
-            }
-            this._whisperNextFlushId++;
-        }
-    }
-
-    /**
-     * 发送下一个待识别的 chunk 到 Worker
-     */
-    _processNextPendingChunk() {
-        if (this._whisperWorkerBusy) return;
-        // 从队列中找到第一个未处理的 chunk
-        for (const [id, item] of this._whisperPendingChunks) {
-            if (!item.done && !item.sent) {
-                item.sent = true;
-                this._whisperWorkerBusy = true;
-                console.log(`[Whisper] 发送 chunkId=${id} 到 Worker 音频${item.audio.length}样本`);
-                this._whisperWorker.postMessage({
-                    type: 'transcribe',
-                    audio: item.audio,
-                    sampleRate: item.sampleRate,
-                    chunkId: id
-                });
-                return;
-            }
-        }
-    }
-
-    // 使用 Whisper 进行实时录音识别（Worker 模式：推理在 Worker 线程，主线程不阻塞）
-    async startWhisperRecognition() {
-        if (!this._whisperLoaded) {
-            UI.showToast('本地AI模型未加载，正在加载...');
-            this._log('warn', 'Whisper模型未加载，开始预加载');
-            await this.preloadWhisper();
-            if (!this._whisperLoaded) return false;
-        }
-
-        try {
-            // 同步启动课堂计时器
-            if (recordPage && typeof recordPage.startClassTimer === 'function') {
-                recordPage.startClassTimer();
-            }
-
-            // 获取麦克风音频流
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            this._whisperMediaStream = stream;
-
-            // 关键修复：不要强制 AudioContext 采样率为 16000Hz！
-            // 很多浏览器/硬件在 new AudioContext({ sampleRate: 16000 }) 时，
-            // createMediaStreamSource 的重采样会静默失败，输出全 0 数据（RMS=0.0000）。
-            // 正确做法：让 AudioContext 使用原生采样率（通常 44100/48000），采集后手动重采样到 16000Hz。
-            const TARGET_SAMPLE_RATE = 16000; // Whisper 模型要求的采样率
-            const CHUNK_DURATION = 5; // 秒（每 5 秒切一段送去 Worker 识别，降低首次识别延迟）
-            const TARGET_BUFFER_SIZE = TARGET_SAMPLE_RATE * CHUNK_DURATION; // 80000 样本
-
-            const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
-            this._whisperAudioContext = new AudioContextCtor(); // 使用默认采样率
-            const nativeSampleRate = this._whisperAudioContext.sampleRate;
-            console.log('[Whisper] AudioContext 原生采样率:', nativeSampleRate, '目标:', TARGET_SAMPLE_RATE);
-            const source = this._whisperAudioContext.createMediaStreamSource(stream);
-            const analyser = this._whisperAudioContext.createAnalyser();
-            analyser.fftSize = 16384;
-            source.connect(analyser);
-
-            // 重置缓冲区和队列状态
-            // _whisperAudioBuffer 存储重采样后的 16000Hz 数据
-            this._whisperAudioBuffer = new Float32Array(TARGET_BUFFER_SIZE);
-            this._whisperBufferIndex = 0;
-            this._whisperPendingChunks = new Map();
-            this._whisperChunkId = 0;
-            this._whisperNextFlushId = 0;
-            this._whisperWorkerBusy = false;
-            // 重采样残留：原生采样率的样本数可能不是整数倍，保留余数下次处理
-            this._whisperResampleCarry = 0;
-
-            // 使用 ScriptProcessorNode 采集音频
-            const processor = this._whisperAudioContext.createScriptProcessor(4096, 1, 1);
-            this._whisperProcessor = processor;
-
-            processor.onaudioprocess = (e) => {
-                if (!this.isRecording) return;
-                const inputData = e.inputBuffer.getChannelData(0);
-                // 重采样：从 nativeSampleRate → TARGET_SAMPLE_RATE (16000)
-                // 使用线性插值，简单但足够用（Whisper 对采样率精度要求不高）
-                // 累积分数法：避免每个 chunk 边界处的样本丢失
-                const ratio = nativeSampleRate / TARGET_SAMPLE_RATE;
-                let pos = this._whisperResampleCarry;
-                const resampled = [];
-                while (pos < inputData.length) {
-                    const idx = Math.floor(pos);
-                    const frac = pos - idx;
-                    if (idx + 1 < inputData.length) {
-                        resampled.push(inputData[idx] * (1 - frac) + inputData[idx + 1] * frac);
-                    } else {
-                        resampled.push(inputData[idx]);
-                    }
-                    pos += ratio;
-                }
-                this._whisperResampleCarry = pos - inputData.length;
-
-                // 写入目标缓冲区
-                for (let i = 0; i < resampled.length; i++) {
-                    if (this._whisperBufferIndex < TARGET_BUFFER_SIZE) {
-                        this._whisperAudioBuffer[this._whisperBufferIndex++] = resampled[i];
-                    } else {
-                        // 缓冲区已满：切片送入队列，重置索引继续写入
-                        const chunk = this._whisperAudioBuffer.slice(0, TARGET_BUFFER_SIZE);
-                        this._enqueueWhisperChunk(chunk, TARGET_SAMPLE_RATE);
-                        this._whisperBufferIndex = 0;
-                        this._whisperAudioBuffer[this._whisperBufferIndex++] = resampled[i];
-                    }
-                }
-            };
-            console.log('[Whisper] onaudioprocess 已注册，TARGET_BUFFER_SIZE=', TARGET_BUFFER_SIZE);
-            analyser.connect(processor);
-            // 不能直接 connect(destination)，否则麦克风音频会从扬声器播放产生回声/啸叫
-            // ScriptProcessorNode 必须连接 destination 才能触发 onaudioprocess
-            // 通过 GainNode 设为 0 音量作为中间节点，既触发处理又不产生声音
-            const silentGain = this._whisperAudioContext.createGain();
-            silentGain.gain.value = 0;
-            processor.connect(silentGain);
-            silentGain.connect(this._whisperAudioContext.destination);
-
-            // 定时识别：每 CHUNK_DURATION 秒把缓冲区现有数据送入队列
-            // 即使缓冲区没满，也定期识别，避免用户停顿时间长但话已说完
-            this._whisperRecognizeInterval = setInterval(() => {
-                if (!this.isRecording) return;
-                if (this._whisperBufferIndex < TARGET_SAMPLE_RATE * 1.5) return; // 至少 1.5 秒才识别
-                const chunk = this._whisperAudioBuffer.slice(0, this._whisperBufferIndex);
-                this._whisperBufferIndex = 0;
-                this._enqueueWhisperChunk(chunk, TARGET_SAMPLE_RATE);
-            }, CHUNK_DURATION * 1000);
-
-            return true;
-        } catch (err) {
-            console.error('[Whisper] 启动失败:', err);
-            this._log('error', 'Whisper启动失败', err.message);
-            // 清理已获取的资源，避免麦克风指示灯持续亮着
-            if (this._whisperMediaStream) {
-                this._whisperMediaStream.getTracks().forEach(t => t.stop());
-                this._whisperMediaStream = null;
-            }
-            if (this._whisperAudioContext) {
-                this._whisperAudioContext.close().catch(() => {});
-                this._whisperAudioContext = null;
-            }
-            UI.showToast('本地AI识别启动失败：' + err.message);
-            return false;
-        }
-    }
-
-    /**
-     * 把音频分片加入待识别队列，并立即尝试发送给 Worker
-     * Worker 一次只处理一个 chunk（互斥），多余的排队等待
-     * 队列溢出保护：如果积压超过 2 个未处理 chunk，丢弃最旧的（避免无限堆积导致延迟越来越大）
-     */
-    _enqueueWhisperChunk(audio, sampleRate) {
-        // 队列溢出保护：统计未处理的 chunk 数量
-        let pendingCount = 0;
-        for (const item of this._whisperPendingChunks.values()) {
-            if (!item.done) pendingCount++;
-        }
-        // 如果积压超过 2 个未处理 chunk，丢弃当前这个（Worker 来不及处理，保留旧 chunk 会越来越延迟）
-        if (pendingCount >= 2) {
-            console.log('[Whisper] 队列积压，丢弃音频 chunk（Worker 处理不过来）');
-            return;
-        }
-
-        const chunkId = this._whisperChunkId++;
-        this._whisperPendingChunks.set(chunkId, { audio, sampleRate, sent: false, done: false });
-        // 尝试发送（如果 Worker 空闲）
-        this._processNextPendingChunk();
-    }
-
-    // 停止 Whisper 识别（isFullStop=true表示完全停止，清空缓冲区；false表示暂停，保留缓冲区）
-    stopWhisperRecognition(isFullStop = true) {
-        // 仅在 Whisper 实际运行时记录日志（避免 browser 模式下产生误导性日志）
-        const wasRunning = !!(this._whisperRecognizeInterval || this._whisperProcessor || this._whisperMediaStream);
-        if (wasRunning) {
-            this._log('info', isFullStop ? 'Whisper完全停止' : 'Whisper暂停', `isRecording=${this.isRecording}`);
-        }
-        if (this._whisperRecognizeInterval) {
-            clearInterval(this._whisperRecognizeInterval);
-            this._whisperRecognizeInterval = null;
-        }
-        if (this._whisperProcessor) {
-            this._whisperProcessor.onaudioprocess = null; // 清除处理器回调
-            this._whisperProcessor.disconnect();
-            this._whisperProcessor = null;
-        }
-
-        // 关键修复：停止前把缓冲区剩余数据送入 Worker 识别
-        // 否则短录音（< chunk 时长）的数据会被直接丢弃，导致没有任何文字输出
-        if (this._whisperAudioBuffer && this._whisperBufferIndex >= 16000 * 1) {
-            // 至少 1 秒数据才值得识别
-            const remainingChunk = this._whisperAudioBuffer.slice(0, this._whisperBufferIndex);
-            console.log(`[Whisper] 停止前发送剩余缓冲区 ${this._whisperBufferIndex} 样本 (${(this._whisperBufferIndex/16000).toFixed(1)}s)`);
-            this._enqueueWhisperChunk(remainingChunk, 16000);
-        }
-        this._whisperBufferIndex = 0;
-
-        if (this._whisperAudioContext) {
-            this._whisperAudioContext.close().catch(() => {});
-            this._whisperAudioContext = null;
-        }
-        if (this._whisperMediaStream) {
-            this._whisperMediaStream.getTracks().forEach(t => t.stop());
-            this._whisperMediaStream = null;
-        }
-        this._whisperWorkerBusy = false;
-        this.isRecording = false;
-
-        // 完全停止时清空缓冲区（但不清空 pendingChunks，让剩余 chunk 的结果仍能写入文本框）
-        // 注意：不 terminate Worker（保留 pipeline，下次录音直接用，避免重新加载 40MB 模型）
-        if (isFullStop) {
-            this._whisperAudioBuffer = null;
-            this._whisperPausedDuration = 0;
-            this._whisperResampleCarry = 0;
-            // 不清空 _whisperPendingChunks / _whisperChunkId / _whisperNextFlushId
-            // 让 stop 前送入的剩余 chunk 能被 Worker 处理并写入文本框
-        }
-    }
-
-    // 使用 Whisper 处理录音文件（Worker 模式，避免阻塞 UI）
-    async importAudioFileWithWhisper(file) {
-        if (!this._whisperLoaded) {
-            UI.showToast('本地AI模型未加载，正在加载...');
-            await this.preloadWhisper();
-            if (!this._whisperLoaded) return;
-        }
-
-        const progressEl = document.getElementById('audio-import-progress');
-        const barEl = document.getElementById('audio-import-bar');
-        const statusEl = document.getElementById('audio-import-status');
-
-        if (progressEl) progressEl.style.display = 'block';
-        if (statusEl) statusEl.textContent = '正在加载音频文件...';
-
-        // 文件导入用独立的 chunkId 空间（从 -1 递减，避免与实时录音的 chunkId 冲突）
-        // 用 Promise 等待 Worker 返回结果，因为文件导入是顺序处理（一个 chunk 处理完才处理下一个）
-        let fileImportChunkId = -1;
-        let fileImportResolver = null; // 当前等待结果的 resolve 函数
-
-        // 临时挂载一个文件导入专用的消息处理器
-        const originalHandler = this._whisperWorker.onmessage;
-        this._whisperWorker.onmessage = (e) => {
-            const msg = e.data;
-            if (msg.type === 'result' && msg.chunkId < 0 && fileImportResolver) {
-                fileImportResolver(msg.text || '');
-                fileImportResolver = null;
-            } else if (msg.type === 'error' && msg.chunkId < 0 && fileImportResolver) {
-                console.warn('[Whisper] 文件识别错误:', msg.error);
-                fileImportResolver('');
-                fileImportResolver = null;
-            }
-            // 其他消息（progress 等）忽略
-        };
-
-        try {
-            const arrayBuffer = await file.arrayBuffer();
-            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
-            const duration = audioBuffer.duration;
-
-            if (duration > 7200) {
-                UI.showToast('录音文件过长（超过2小时），请截取后重试');
-                if (progressEl) progressEl.style.display = 'none';
-                audioContext.close();
-                return;
-            }
-
-            if (statusEl) statusEl.textContent = `录音时长 ${Math.floor(duration/60)}分${Math.floor(duration%60)}秒，开始AI识别...`;
-
-            const textarea = document.getElementById('transcript');
-            const existingText = textarea ? textarea.value.trim() : '';
-            if (existingText) {
-                this.accumulatedText = existingText + '\n';
-            } else {
-                this.accumulatedText = '';
-            }
-
-            // 分段处理（每30秒一段）
-            const CHUNK_SEC = 30;
-            const totalChunks = Math.ceil(duration / CHUNK_SEC);
-            let fullText = '';
-
-            for (let i = 0; i < totalChunks; i++) {
-                if (!this._whisperLoaded) break; // 模型被卸载
-
-                const start = i * CHUNK_SEC;
-                const end = Math.min(start + CHUNK_SEC, duration);
-                const startSample = Math.floor(start * audioBuffer.sampleRate);
-                const endSample = Math.min(Math.floor(end * audioBuffer.sampleRate), audioBuffer.length);
-
-                const chunkLength = endSample - startSample;
-                const float32 = new Float32Array(chunkLength);
-                for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
-                    const channelData = audioBuffer.getChannelData(ch);
-                    for (let j = 0; j < chunkLength; j++) {
-                        float32[j] += channelData[startSample + j];
-                    }
-                }
-                // 多声道取平均
-                if (audioBuffer.numberOfChannels > 1) {
-                    for (let j = 0; j < chunkLength; j++) {
-                        float32[j] /= audioBuffer.numberOfChannels;
-                    }
-                }
-
-                // 发送到 Worker 并等待结果
-                const text = await new Promise((resolve) => {
-                    fileImportResolver = resolve;
-                    this._whisperWorker.postMessage({
-                        type: 'transcribe',
-                        audio: float32,
-                        sampleRate: audioBuffer.sampleRate,
-                        chunkId: fileImportChunkId--
-                    });
-                });
-
-                if (text) {
-                    fullText += text;
-                    if (textarea) {
-                        textarea.value = this.accumulatedText + fullText;
-                        textarea.scrollTop = textarea.scrollHeight;
-                    }
-                }
-
-                // 更新进度
-                const pct = Math.round(((i + 1) / totalChunks) * 100);
-                if (barEl) barEl.style.width = pct + '%';
-                if (statusEl) {
-                    statusEl.textContent = `AI识别中 ${Math.floor(end/60)}:${Math.floor(end%60).toString().padStart(2,'0')} / ${Math.floor(duration/60)}:${Math.floor(duration%60).toString().padStart(2,'0')}（已识别 ${fullText.length} 字）`;
-                }
-            }
-
-            audioContext.close();
-
-            // 完成
-            this.accumulatedText = (this.accumulatedText + fullText).trim();
-            if (textarea) textarea.value = this.accumulatedText;
-
-            if (barEl) barEl.style.width = '100%';
-            if (statusEl) statusEl.textContent = `AI识别完成！共识别 ${fullText.length} 字`;
-            UI.showToast(`本地AI识别完成，共识别 ${fullText.length} 字`);
-
-            setTimeout(() => {
-                if (progressEl) progressEl.style.display = 'none';
-                if (barEl) barEl.style.width = '0%';
-            }, 3000);
-
-        } catch (err) {
-            console.error('[Whisper] 文件导入失败:', err);
-            UI.showToast('AI识别失败：' + (err.message || '不支持的音频格式'));
-            if (progressEl) progressEl.style.display = 'none';
-        } finally {
-            // 恢复实时录音的消息处理器
-            this._whisperWorker.onmessage = originalHandler || ((e) => this._onWorkerMessage(e));
+    _appendResult(text) {
+        if (!text) return;
+        this.accumulatedText += text;
+        this.updateDisplay();
+        const textarea = document.getElementById('transcript');
+        if (textarea) {
+            textarea.value = this.accumulatedText;
+            textarea.scrollTop = textarea.scrollHeight;
         }
     }
 
@@ -1975,8 +1481,8 @@ class Recorder {
         const speechConfig = Storage.getSpeechConfig();
         if (speechConfig.provider === 'whisper') {
             // Whisper 模式：立即停止音频采集和 UI，不等待 Worker 处理完 pending chunks
-            // （pending chunks 的结果仍会通过 _onWorkerMessage 写入，但不再阻塞 stop）
-            this.stopWhisperRecognition();
+            // （pending chunks 的结果仍会通过 Provider 回调写入，但不再阻塞 stop）
+            this._whisperProvider.stop();
             this.commitTranscript();
             this.stopTimer();
 
@@ -2019,8 +1525,8 @@ class Recorder {
         }
 
         // 浏览器模式：原有的 SpeechRecognition 停止逻辑
-        // 停止 Whisper 识别
-        this.stopWhisperRecognition();
+        // 兜底停止 Whisper（防止 Whisper 资源残留）
+        this._whisperProvider.stop();
         this.commitTranscript();
         this.stopTimer();
 
@@ -2129,8 +1635,8 @@ class Recorder {
         this.recognition = this._createRecognition();
         
         // 停止 Whisper 识别（暂停模式，保留缓冲区）
-        if (this._whisperRecognizeInterval) {
-            this.stopWhisperRecognition(false);
+        if (this._whisperProvider && this._whisperProvider.status === 'running') {
+            this._whisperProvider.stop(false);
         }
         
         this.commitTranscript();
@@ -2189,7 +1695,10 @@ class Recorder {
         const speechConfig = Storage.getSpeechConfig();
         if (speechConfig.provider === 'whisper') {
             this.sessionStartTime = Date.now() - (this._whisperPausedDuration || 0);
-            const started = await this.startWhisperRecognition();
+            const started = await this._whisperProvider.start({
+                onResult: (text) => this._appendResult(text),
+                onError: (err) => this._log('error', 'Whisper识别错误', err.message)
+            });
             if (started) {
                 this.startTimer();
                 this.isRecording = true;
