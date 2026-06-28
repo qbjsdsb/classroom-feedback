@@ -1483,6 +1483,21 @@ class Recorder {
     }
 
     /**
+     * 预加载 Vosk 模型（代理到 VoskProvider）
+     */
+    async preloadVosk(onProgress) {
+        return this._voskProvider.preload(onProgress);
+    }
+
+    /**
+     * 预加载 Sherpa 模型（代理到 SherpaProvider）
+     * 注意：Sherpa 需要 crossOriginIsolated 环境，不支持时 preload 会直接失败并提示
+     */
+    async preloadSherpa(onProgress) {
+        return this._sherpaProvider.preload(onProgress);
+    }
+
+    /**
      * 追加一段识别结果到文本框（供 Provider 通过 onResult 回调调用）
      * 文本写入逻辑统一在此，Provider 不直接操作 DOM
      */
