@@ -58,6 +58,12 @@ class SettingsPage {
                     <h3 style="font-size:1.05rem;font-weight:700;">🎤 语音识别</h3>
                     <div class="form-group">
                         <div class="speech-provider-list">
+                            <label class="style-option ${speechConfig.provider === 'auto' ? 'active' : ''}">
+                                <input type="radio" name="speech-provider" value="auto" ${speechConfig.provider === 'auto' ? 'checked' : ''}>
+                                <span class="style-icon">⚡</span>
+                                <span class="style-name">智能选择</span>
+                                <span class="style-desc">自动降级，推荐</span>
+                            </label>
                             <label class="style-option ${speechConfig.provider === 'browser' ? 'active' : ''}">
                                 <input type="radio" name="speech-provider" value="browser" ${speechConfig.provider === 'browser' ? 'checked' : ''}>
                                 <span class="style-icon">🌐</span>
@@ -325,6 +331,27 @@ class SettingsPage {
     }
 
     renderSpeechConfigFields(config) {
+        if (config.provider === 'auto') {
+            return `
+                <div style="padding:12px;background:var(--bg);border-radius:var(--radius-sm);border:1px solid var(--border-light);">
+                    <p class="hint-text" style="margin-bottom:8px;">
+                        ⚡ <strong>智能选择</strong>（自动降级，推荐大多数用户）
+                    </p>
+                    <p class="hint-text" style="margin-bottom:6px;">
+                        按优先级自动选择最优可用的本地引擎，都不支持时降级到浏览器内置：<br>
+                        ① Sherpa-onnx（SenseVoice，50+语种，需 COOP/COEP 环境）<br>
+                        ② Vosk（流式实时输出，模型约43MB）<br>
+                        ③ Whisper（离线，99+语言，模型约40MB）<br>
+                        ④ 浏览器内置（需联网）
+                    </p>
+                    <p class="hint-text" style="margin-bottom:0;">
+                        ℹ️ GitHub Pages 默认不支持 Sherpa（无 COOP/COEP 头），将自动降级到 Vosk。
+                        录音开始时控制台日志会显示实际选中的引擎。
+                    </p>
+                </div>
+            `;
+        }
+
         if (config.provider === 'browser') {
             return `<p class="hint-text">使用浏览器内置语音识别（Web Speech API），无需额外配置。推荐使用 Edge 浏览器获得最佳效果，Chrome 也可以正常使用。</p>`;
         }

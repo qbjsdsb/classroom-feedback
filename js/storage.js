@@ -197,7 +197,7 @@ class Storage {
     // 语音识别配置
     static getSpeechConfig() {
         const data = this._getCache('cf_speech_config');
-        if (!data) return { provider: 'browser', apiKey: '', secretKey: '', appId: '' };
+        if (!data) return { provider: 'auto', apiKey: '', secretKey: '', appId: '' };
         return data;
     }
 

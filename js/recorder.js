@@ -67,6 +67,7 @@ class Recorder {
         this._whisperProvider = new WhisperProvider(this);
         this._voskProvider = new VoskProvider(this);
         this._sherpaProvider = new SherpaProvider(this);
+        this._resolvedAutoProvider = null; // Auto 模式会话内缓存（start→pause→resume 保持一致，stop 清除）
         this._whisperPausedDuration = 0; // 已暂停时长（resume 时扣除，供 browser/whisper 分支共用）
         this._initVisibilityHandler();
         // 页面卸载前刷新日志缓冲区，避免丢失未持久化的 warn/error 日志
@@ -1044,6 +1045,15 @@ class Recorder {
                     UI.updateRecordButton(false);
                     this.sessionStartTime = null;
                     this._userIntendsToRecord = false; // 启动失败，清除意图标志
+                    // Auto 模式启动失败：清除缓存，避免下次重复选中失败的引擎
+                    // 注意：isSupported() 是静态环境检测，不会因 start 失败而变化，
+                    // 所以 Auto 仍会选中同一引擎。此处清除缓存仅为保持状态干净，
+                    // 并提示用户手动切换引擎（不自动降级，避免行为不可预测）
+                    if (speechConfig.provider === 'auto') {
+                        this._resolvedAutoProvider = null;
+                        UI.showToast(`${_localProvider.displayName} 启动失败，请在设置中手动选择其他引擎`);
+                        this._log('warn', 'Auto引擎启动失败', `${_localProvider.id} start()返回false`);
+                    }
                 }
             } catch (err) {
                 // 未预期异常：清理所有状态，防止残留
@@ -1051,6 +1061,7 @@ class Recorder {
                 this._userIntendsToRecord = false;
                 this.sessionStartTime = null;
                 this.isRecording = false;
+                this._resolvedAutoProvider = null; // 清除 Auto 缓存，保持状态干净
                 this._log('error', '本地识别启动异常', err.message);
                 UI.showToast('本地AI识别启动异常：' + err.message);
             } finally {
@@ -1427,6 +1438,40 @@ class Recorder {
         if (provider === 'whisper') return this._whisperProvider;
         if (provider === 'vosk') return this._voskProvider;
         if (provider === 'sherpa') return this._sherpaProvider;
+        if (provider === 'auto') {
+            // 会话内缓存：start→pause→resume 保持同一 provider，避免中途切换导致状态混乱
+            if (this._resolvedAutoProvider) return this._resolvedAutoProvider;
+            const resolved = this._resolveAutoProvider();
+            if (resolved) {
+                this._resolvedAutoProvider = resolved.provider;
+                this._log('info', 'Auto降级链解析', `${resolved.reason}（下次start前环境变化会重新评估）`);
+                return resolved.provider;
+            }
+            return null; // 三个本地引擎都不支持，走浏览器原生
+        }
+        return null;
+    }
+
+    /**
+     * Auto 模式：按优先级降级选择第一个 isSupported() 的本地 Provider
+     * 降级链：Sherpa → Vosk → Whisper → null（走浏览器原生）
+     * - Sherpa：SenseVoice 50+语种、70ms/10s、内置标点，准确率最高，但需 crossOriginIsolated（COOP/COEP）
+     * - Vosk：流式实时输出、模型小（43MB）、兼容性好
+     * - Whisper：离线、99+语言，但分段批量识别有延迟
+     * @returns {{provider: SpeechProvider, reason: string} | null}
+     */
+    _resolveAutoProvider() {
+        const candidates = [
+            { p: this._sherpaProvider, name: 'Sherpa' },
+            { p: this._voskProvider, name: 'Vosk' },
+            { p: this._whisperProvider, name: 'Whisper' },
+        ];
+        for (const c of candidates) {
+            if (c.p && typeof c.p.isSupported === 'function' && c.p.isSupported()) {
+                return { provider: c.p, reason: `Auto→${c.name}` };
+            }
+        }
+        this._log('info', 'Auto降级链', '三个本地引擎均不支持，降级到浏览器原生');
         return null;
     }
 
@@ -1537,6 +1582,9 @@ class Recorder {
             this.sessionStartTime = null;
             this.restartCount = 0;
             this.segmentCount = 0;
+            // 清除 Auto 降级缓存：下次 start 重新评估环境
+            // （适应运行时环境变化，如用户部署了 COOP/COEP 后 Sherpa 变为可用）
+            this._resolvedAutoProvider = null;
 
             // 不 terminate Worker（保留 pipeline，下次录音直接用）
             return;
@@ -1728,6 +1776,7 @@ class Recorder {
             } else {
                 // 本地识别启动失败，重置暂停状态并提示用户
                 this._isPaused = false;
+                this._resolvedAutoProvider = null; // 清除 Auto 缓存，保持状态干净
                 this._log('error', '本地识别恢复录音失败');
                 UI.showToast('恢复录音失败，请重试');
                 UI.updateRecordButton(false);
