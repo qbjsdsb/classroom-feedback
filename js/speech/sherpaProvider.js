@@ -162,13 +162,11 @@ class SherpaProvider extends (SpeechProvider || class {}) {
         // 1. 检查 IndexedDB 缓存
         const cached = await this._idbGet(filename);
         if (cached) {
-            console.log(`[Sherpa] ${filename} 命中 IndexedDB 缓存 (${(cached.byteLength / 1024 / 1024).toFixed(1)}MB)`);
             if (onProgress) onProgress(100);
             return cached;
         }
 
         // 2. 没有缓存，下载文件
-        console.log(`[Sherpa] 下载 ${filename} from ${url}`);
         const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`下载 ${filename} 失败: HTTP ${response.status}`);
@@ -203,7 +201,6 @@ class SherpaProvider extends (SpeechProvider || class {}) {
 
         // 4. 缓存到 IndexedDB
         await this._idbSet(filename, buf.buffer);
-        console.log(`[Sherpa] ${filename} 下载完成并缓存 (${(received / 1024 / 1024).toFixed(1)}MB)`);
         return buf.buffer;
     }
 
@@ -233,7 +230,6 @@ class SherpaProvider extends (SpeechProvider || class {}) {
             await this._loadScript(SHERPA_VAD_JS_URL);
         }
         this._scriptsLoaded = true;
-        console.log('[Sherpa] JS 包装层加载完成');
     }
 
     /**
@@ -262,7 +258,6 @@ class SherpaProvider extends (SpeechProvider || class {}) {
                             for (const [filename, data] of Object.entries(this._modelFiles)) {
                                 try {
                                     module.FS.writeFile(`./${filename}`, new Uint8Array(data));
-                                    console.log(`[Sherpa] MEMFS 注入: ${filename} (${(data.byteLength / 1024 / 1024).toFixed(1)}MB)`);
                                 } catch (e) {
                                     console.error(`[Sherpa] MEMFS 注入失败: ${filename}`, e);
                                 }
@@ -273,12 +268,13 @@ class SherpaProvider extends (SpeechProvider || class {}) {
 
                 // onRuntimeInitialized: WASM 初始化完成后调用
                 onRuntimeInitialized: function() {
-                    console.log('[Sherpa] WASM 运行时初始化完成');
                     resolve(window.Module);
                 },
 
                 // 打印和错误回调
-                print: function(text) { console.log('[Sherpa/WASM]', text); },
+                // print（WASM stdout）静默：内部诊断日志对用户无意义
+                // printErr（WASM stderr）保留为 warn：异常排查有用
+                print: function() {},
                 printErr: function(text) { console.warn('[Sherpa/WASM]', text); },
 
                 // 初始内存（sherpa-onnx 需要较大内存）
@@ -369,11 +365,9 @@ class SherpaProvider extends (SpeechProvider || class {}) {
             // 4. 创建 VAD
             // 使用默认配置：Silero VAD, threshold=0.5, windowSize=512(32ms@16kHz)
             this._vad = createVad(this._module);
-            console.log('[Sherpa] VAD 创建完成');
 
             // 5. 创建 CircularBuffer（30 秒容量）
             this._buffer = new CircularBuffer(30 * 16000, this._module);
-            console.log('[Sherpa] CircularBuffer 创建完成');
 
             // 6. 创建 OfflineRecognizer（SenseVoice 配置）
             const config = {
@@ -387,7 +381,6 @@ class SherpaProvider extends (SpeechProvider || class {}) {
                 },
             };
             this._recognizer = new OfflineRecognizer(config, this._module);
-            console.log('[Sherpa] OfflineRecognizer 创建完成');
 
             this._loaded = true;
             this.isReady = true;
@@ -455,9 +448,6 @@ class SherpaProvider extends (SpeechProvider || class {}) {
     _processSpeechSegment(segment) {
         if (!segment || !segment.samples || segment.samples.length === 0) return;
 
-        const duration = segment.samples.length / 16000;
-        console.log(`[Sherpa] 语音段: ${duration.toFixed(2)}秒, ${segment.samples.length} 样本`);
-
         try {
             const stream = this._recognizer.createStream();
             stream.acceptWaveform(16000, segment.samples);
@@ -467,7 +457,6 @@ class SherpaProvider extends (SpeechProvider || class {}) {
 
             const text = (result.text || '').trim();
             if (text) {
-                console.log('[Sherpa] 识别结果:', text);
                 if (this._onResult) this._onResult(text);
             }
         } catch (err) {
@@ -567,7 +556,6 @@ class SherpaProvider extends (SpeechProvider || class {}) {
             this._buffer.reset();
 
             this.status = 'running';
-            console.log('[Sherpa] 录音识别已启动');
             return true;
         } catch (err) {
             console.error('[Sherpa] 启动失败:', err);

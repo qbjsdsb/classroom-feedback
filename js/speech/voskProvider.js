@@ -77,7 +77,6 @@ class VoskProvider extends (SpeechProvider || class {}) {
             script.onload = () => {
                 if (window.Vosk) {
                     this._scriptLoaded = true;
-                    console.log('[Vosk] vosk-browser 库加载完成');
                     resolve();
                 } else {
                     reject(new Error('vosk-browser 加载完成但未暴露 Vosk 全局对象'));
@@ -119,7 +118,6 @@ class VoskProvider extends (SpeechProvider || class {}) {
             this._loaded = true;
             this.isReady = true;
             this.status = 'ready';
-            console.log('[Vosk] 模型加载完成');
             if (statusEl) statusEl.textContent = 'Vosk 模型状态：已就绪 ✓';
             if (onProgress) onProgress({ status: 'ready', progress: 100 });
             UI.showToast('Vosk 语音识别模型加载完成');
@@ -179,7 +177,6 @@ class VoskProvider extends (SpeechProvider || class {}) {
             this._recognizer.on("result", (message) => {
                 const text = (message.result.text || '').trim();
                 if (text) {
-                    console.log('[Vosk] final:', text);
                     // 通过回调交给 Recorder 写入文本框（与 Whisper 统一的写入路径）
                     if (this._onResult) this._onResult(text);
                     this._lastPartial = '';
@@ -228,7 +225,6 @@ class VoskProvider extends (SpeechProvider || class {}) {
             silentGain.connect(this._audioContext.destination);
 
             this.status = 'running';
-            console.log('[Vosk] 录音识别已启动');
             return true;
         } catch (err) {
             console.error('[Vosk] 启动失败:', err);

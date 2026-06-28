@@ -88,13 +88,7 @@ class WhisperProvider extends (SpeechProvider || class {}) {
                     const msg = e.data;
                     if (msg.type === 'progress') {
                         const progress = msg.progress;
-                        if (progress.status === 'initiate') {
-                            console.log('[Whisper] 开始下载文件:', progress.file);
-                        } else if (progress.status === 'progress') {
-                            console.log(`[Whisper] 下载 ${progress.file}: ${Math.round(progress.progress)}%`);
-                        } else if (progress.status === 'done') {
-                            console.log('[Whisper] 文件下载完成:', progress.file);
-                        }
+                        // 下载进度通过 statusEl 显示给用户，不再 console.log（避免刷屏）
                         if (statusEl && progress.status) {
                             const pct = progress.progress ? Math.round(progress.progress) : 0;
                             statusEl.textContent = `模型状态：${progress.status} ${pct ? pct + '%' : ''}`;
@@ -130,7 +124,6 @@ class WhisperProvider extends (SpeechProvider || class {}) {
             this._loaded = true;
             this.isReady = true;
             this.status = 'ready';
-            console.log('[Whisper] 模型加载成功（Worker 模式）');
             if (statusEl) statusEl.textContent = '模型状态：已就绪 ✓';
             UI.showToast('本地AI语音识别模型加载完成');
         } catch (err) {
@@ -161,7 +154,6 @@ class WhisperProvider extends (SpeechProvider || class {}) {
             this._workerBusy = false;
             const chunkId = msg.chunkId;
             const text = msg.text || '';
-            console.log(`[Whisper] 收到结果 chunkId=${chunkId} text="${text}" 队列大小=${this._pendingChunks.size}`);
 
             // 把结果存入待处理队列
             this._pendingChunks.set(chunkId, { text, done: true });
@@ -195,14 +187,13 @@ class WhisperProvider extends (SpeechProvider || class {}) {
                 // 读取 Recorder 的累计文本做去重判断
                 const existing = (this.recorder && this.recorder.accumulatedText) || '';
                 if (existing.endsWith(item.text)) {
-                    console.log(`[Whisper] chunkId=${this._nextFlushId} 文本重复跳过`);
+                    // Whisper 重复识别，跳过
                 } else {
-                    console.log(`[Whisper] 输出文本 chunkId=${this._nextFlushId} 文本="${item.text}"`);
                     // 通过回调交给 Recorder 写入文本框（解耦：Provider 不直接操作 DOM）
                     if (this._onResult) this._onResult(item.text);
                 }
             } else {
-                console.log(`[Whisper] chunkId=${this._nextFlushId} 空文本跳过`);
+                // 空文本跳过
             }
             this._nextFlushId++;
         }
@@ -217,7 +208,6 @@ class WhisperProvider extends (SpeechProvider || class {}) {
             if (!item.done && !item.sent) {
                 item.sent = true;
                 this._workerBusy = true;
-                console.log(`[Whisper] 发送 chunkId=${id} 到 Worker 音频${item.audio.length}样本`);
                 this._worker.postMessage({
                     type: 'transcribe',
                     audio: item.audio,
@@ -315,7 +305,6 @@ class WhisperProvider extends (SpeechProvider || class {}) {
                     }
                 }
             };
-            console.log('[Whisper] onaudioprocess 已注册，TARGET_BUFFER_SIZE=', TARGET_BUFFER_SIZE);
             analyser.connect(processor);
             // 不能直接 connect(destination)，否则麦克风音频会从扬声器播放产生回声/啸叫
             // ScriptProcessorNode 必须连接 destination 才能触发 onaudioprocess
@@ -366,7 +355,7 @@ class WhisperProvider extends (SpeechProvider || class {}) {
             if (!item.done) pendingCount++;
         }
         if (pendingCount >= 2) {
-            console.log('[Whisper] 队列积压，丢弃音频 chunk（Worker 处理不过来）');
+            console.warn('[Whisper] 队列积压，丢弃音频 chunk（Worker 处理不过来）');
             return;
         }
         const chunkId = this._chunkId++;
