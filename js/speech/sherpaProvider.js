@@ -675,6 +675,14 @@ class SherpaProvider extends (SpeechProvider || class {}) {
         if (progressEl) progressEl.style.display = 'block';
         if (statusEl) statusEl.textContent = '正在加载音频文件...';
 
+        // 保存并替换 onResult 回调：importFile 不依赖 start() 设置的回调
+        // _processSpeechSegment 通过 this._onResult 输出文本，若不设置（如未先 start 过），
+        // 识别文本会被静默丢弃。此处设置临时回调直接追加到 accumulatedText。
+        const savedOnResult = this._onResult;
+        this._onResult = (text) => {
+            this.recorder.accumulatedText += text;
+        };
+
         try {
             const arrayBuffer = await file.arrayBuffer();
             const audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -782,6 +790,9 @@ class SherpaProvider extends (SpeechProvider || class {}) {
             UI.showToast('Sherpa识别失败：' + (err.message || '不支持的音频格式'));
             if (progressEl) progressEl.style.display = 'none';
             return false;
+        } finally {
+            // 恢复原 onResult 回调（避免影响后续 start() 的回调注入）
+            this._onResult = savedOnResult;
         }
     }
 
