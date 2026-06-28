@@ -65,6 +65,7 @@ class Recorder {
         this.initSpeechRecognition();
         // 初始化语音识别 Provider（Whisper 已抽离到 js/speech/whisperProvider.js）
         this._whisperProvider = new WhisperProvider(this);
+        this._voskProvider = new VoskProvider(this);
         this._whisperPausedDuration = 0; // 已暂停时长（resume 时扣除，供 browser/whisper 分支共用）
         this._initVisibilityHandler();
         // 页面卸载前刷新日志缓冲区，避免丢失未持久化的 warn/error 日志
@@ -1007,8 +1008,9 @@ class Recorder {
         // 检查当前选择的语音识别提供商
         const speechConfig = Storage.getSpeechConfig();
         this._log('info', '开始录音', `provider=${speechConfig.provider}`);
-        if (speechConfig.provider === 'whisper') {
-            // 使用本地AI识别
+        const _localProvider = this._getActiveLocalProvider();
+        if (_localProvider) {
+            // 使用本地AI识别（Whisper / Vosk / ...）
             this._isStarting = true; // 防重入保护
             // 即时 UI 反馈：getUserMedia 是异步的，等待期间立即更新按钮状态
             // 避免用户以为卡死而重复点击（双击会导致 toggle 走 pause 分支）
@@ -1028,9 +1030,9 @@ class Recorder {
                 if (recordPage && typeof recordPage.startClassTimer === 'function') {
                     recordPage.startClassTimer();
                 }
-                const started = await this._whisperProvider.start({
+                const started = await _localProvider.start({
                     onResult: (text) => this._appendResult(text),
-                    onError: (err) => this._log('error', 'Whisper识别错误', err.message)
+                    onError: (err) => this._log('error', '本地识别错误', err.message)
                 });
                 this.isRecording = started;
                 if (started) {
@@ -1048,7 +1050,7 @@ class Recorder {
                 this._userIntendsToRecord = false;
                 this.sessionStartTime = null;
                 this.isRecording = false;
-                this._log('error', 'Whisper启动异常', err.message);
+                this._log('error', '本地识别启动异常', err.message);
                 UI.showToast('本地AI识别启动异常：' + err.message);
             } finally {
                 this._isStarting = false; // 无论成功或异常，都释放防重入锁
@@ -1209,8 +1211,9 @@ class Recorder {
     async importAudioFile(file) {
         this._log('info', '导入录音文件', `name=${file.name},size=${(file.size/1024).toFixed(0)}KB`);
         const speechConfig = Storage.getSpeechConfig();
-        if (speechConfig.provider === 'whisper') {
-            await this._whisperProvider.importFile(file);
+        const _localProvider = this._getActiveLocalProvider();
+        if (_localProvider) {
+            await _localProvider.importFile(file);
             return;
         }
 
@@ -1411,7 +1414,19 @@ class Recorder {
     }
 
     // Whisper 状态字段与模型加载逻辑已移至 js/speech/whisperProvider.js
-    // Recorder 通过 this._whisperProvider 调度，文本写入通过 _appendResult 回调
+    // Recorder 通过 Provider 实例调度，文本写入通过 _appendResult 回调
+
+    /**
+     * 获取当前配置对应的本地识别 Provider（whisper/vosk/sherpa）
+     * 统一入口，新增引擎只需在此添加一行
+     * @returns {SpeechProvider|null} 非 browser 模式返回 Provider 实例，browser 模式返回 null
+     */
+    _getActiveLocalProvider() {
+        const provider = Storage.getSpeechConfig().provider;
+        if (provider === 'whisper') return this._whisperProvider;
+        if (provider === 'vosk') return this._voskProvider;
+        return null;
+    }
 
     /**
      * 预加载 Whisper 模型（代理到 WhisperProvider）
@@ -1479,10 +1494,11 @@ class Recorder {
         }
 
         const speechConfig = Storage.getSpeechConfig();
-        if (speechConfig.provider === 'whisper') {
-            // Whisper 模式：立即停止音频采集和 UI，不等待 Worker 处理完 pending chunks
+        const _localProvider = this._getActiveLocalProvider();
+        if (_localProvider) {
+            // 本地识别模式：立即停止音频采集和 UI，不等待 Worker 处理完 pending chunks
             // （pending chunks 的结果仍会通过 Provider 回调写入，但不再阻塞 stop）
-            this._whisperProvider.stop();
+            _localProvider.stop();
             this.commitTranscript();
             this.stopTimer();
 
@@ -1525,8 +1541,9 @@ class Recorder {
         }
 
         // 浏览器模式：原有的 SpeechRecognition 停止逻辑
-        // 兜底停止 Whisper（防止 Whisper 资源残留）
+        // 兜底停止所有本地 Provider（防止 Whisper/Vosk 资源残留）
         this._whisperProvider.stop();
+        this._voskProvider.stop();
         this.commitTranscript();
         this.stopTimer();
 
@@ -1634,9 +1651,10 @@ class Recorder {
         // 暂停后创建新的 recognition 实例，为恢复录音准备
         this.recognition = this._createRecognition();
         
-        // 停止 Whisper 识别（暂停模式，保留缓冲区）
-        if (this._whisperProvider && this._whisperProvider.status === 'running') {
-            this._whisperProvider.stop(false);
+        // 停止本地识别（暂停模式，保留缓冲区/recognizer）
+        const _localProvider = this._getActiveLocalProvider();
+        if (_localProvider && _localProvider.status === 'running') {
+            _localProvider.stop(false);
         }
         
         this.commitTranscript();
@@ -1693,20 +1711,21 @@ class Recorder {
         }
 
         const speechConfig = Storage.getSpeechConfig();
-        if (speechConfig.provider === 'whisper') {
+        const _localProvider = this._getActiveLocalProvider();
+        if (_localProvider) {
             this.sessionStartTime = Date.now() - (this._whisperPausedDuration || 0);
-            const started = await this._whisperProvider.start({
+            const started = await _localProvider.start({
                 onResult: (text) => this._appendResult(text),
-                onError: (err) => this._log('error', 'Whisper识别错误', err.message)
+                onError: (err) => this._log('error', '本地识别错误', err.message)
             });
             if (started) {
                 this.startTimer();
                 this.isRecording = true;
                 UI.updateRecordButton(true);
             } else {
-                // Whisper 启动失败，重置暂停状态并提示用户
+                // 本地识别启动失败，重置暂停状态并提示用户
                 this._isPaused = false;
-                this._log('error', 'Whisper恢复录音失败');
+                this._log('error', '本地识别恢复录音失败');
                 UI.showToast('恢复录音失败，请重试');
                 UI.updateRecordButton(false);
             }
