@@ -279,9 +279,16 @@ class StudentsPage {
     bindEvents() {
         const searchInput = document.getElementById('student-search');
         if (searchInput) {
-            searchInput.addEventListener('input', (e) => {
-                this.searchQuery = e.target.value;
-                this.updateStudentList();
+            // P4-2: 搜索输入防抖 250ms，避免每次按键都触发 store.searchStudents + innerHTML 重渲染
+            // 学生数量多时显著减少卡顿；定时器读取最新 input.value 保证最终一致性
+            let searchTimer = null;
+            searchInput.addEventListener('input', () => {
+                if (searchTimer) clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => {
+                    this.searchQuery = searchInput.value;
+                    this.updateStudentList();
+                    searchTimer = null;
+                }, 250);
             });
         }
 

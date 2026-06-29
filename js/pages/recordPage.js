@@ -613,10 +613,10 @@ class RecordPage {
         }
         const currentSubjectId = app.currentSubject?.id;
         const items = subjects.map(s => `
-            <div class="subject-switch-item ${s.id === currentSubjectId ? 'active' : ''}" data-subject-id="${escapeHtml(s.id)}">
-                <span class="color-dot" style="background:${escapeHtml(s.color)}"></span>
+            <div class="subject-switch-item ${s.id === currentSubjectId ? 'active' : ''}" data-subject-id="${escapeHtml(s.id)}" role="button" tabindex="0" aria-label="切换到科目 ${escapeHtml(s.name)}">
+                <span class="color-dot" style="background:${escapeHtml(s.color)}" aria-hidden="true"></span>
                 <span>${escapeHtml(s.name)}</span>
-                ${s.id === currentSubjectId ? '<span style="margin-left:auto;color:var(--primary);">✓</span>' : ''}
+                ${s.id === currentSubjectId ? '<span style="margin-left:auto;color:var(--primary);" aria-hidden="true">✓</span>' : ''}
             </div>
         `).join('');
 
@@ -629,7 +629,7 @@ class RecordPage {
 
         requestAnimationFrame(() => {
             document.querySelectorAll('.subject-switch-item').forEach(el => {
-                el.addEventListener('click', () => {
+                const handler = () => {
                     const subjectId = el.dataset.subjectId;
                     const subject = store.getSubjects().find(s => s.id === subjectId);
                     if (subject) {
@@ -637,6 +637,14 @@ class RecordPage {
                         this.render();
                         UI.closeBottomSheet();
                         UI.showToast('已切换到 ' + subject.name);
+                    }
+                };
+                el.addEventListener('click', handler);
+                // 键盘可达性：Enter/Space 触发
+                el.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handler();
                     }
                 });
             });
@@ -687,7 +695,7 @@ class RecordPage {
                 <div style="margin-bottom:12px;">
                     <div style="font-size:0.8rem;font-weight:600;color:var(--text-muted);padding:4px 0;margin-bottom:4px;">${escapeHtml(cat)}</div>
                     ${catTemplates.map(t => `
-                        <div class="prompt-template-pick-item" data-template-id="${escapeHtml(t.id)}" style="padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;cursor:pointer;transition:background 0.15s;">
+                        <div class="prompt-template-pick-item" data-template-id="${escapeHtml(t.id)}" role="button" tabindex="0" aria-label="应用模板 ${escapeHtml(t.name)}" style="padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--radius-sm);margin-bottom:6px;cursor:pointer;transition:background 0.15s;">
                             <div style="font-weight:600;font-size:0.9rem;color:var(--text);">${escapeHtml(t.name)}</div>
                             ${t.description ? `<div style="font-size:0.8rem;color:var(--text-muted);margin-top:2px;">${escapeHtml(t.description)}</div>` : ''}
                         </div>
@@ -708,7 +716,7 @@ class RecordPage {
 
         requestAnimationFrame(() => {
             document.querySelectorAll('.prompt-template-pick-item').forEach(el => {
-                el.addEventListener('click', () => {
+                const handler = () => {
                     const templateId = el.dataset.templateId;
                     const template = store.getPromptTemplateById(templateId);
                     if (!template) return;
@@ -720,6 +728,14 @@ class RecordPage {
 
                     UI.closeBottomSheet();
                     UI.showToast(`已应用模板「${template.name}」`);
+                };
+                el.addEventListener('click', handler);
+                // 键盘可达性：Enter/Space 触发
+                el.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handler();
+                    }
                 });
                 el.addEventListener('mouseenter', () => {
                     el.style.background = 'var(--primary-soft)';
@@ -734,6 +750,9 @@ class RecordPage {
     }
 
     async generateFeedback() {
+        // P5-3: 应用层并发锁，避免按钮 DOM 状态被外部重置后再次进入造成重复写入
+        // 任意以下情况都会拒绝：上一次生成仍在进行中
+        if (this._isGenerating) return;
         // 防重复提交：检查是否正在生成
         const btn = document.getElementById('btn-generate');
         if (btn && btn.disabled) return;
@@ -757,6 +776,9 @@ class RecordPage {
             UI.showToast('请至少启用一个反馈模块');
             return;
         }
+
+        // 所有前置校验通过，置位并发锁（finally 块负责释放）
+        this._isGenerating = true;
 
         // 防重复提交：禁用按钮+loading状态
         if (btn) {
@@ -883,6 +905,8 @@ class RecordPage {
             UI.hideLoading();
             // 清除本次使用的模板ID，避免下次生成时无意识地继续使用
             this._selectedPromptTemplateId = null;
+            // P5-3: 释放并发锁（必须在按钮恢复前释放，避免极端时序下错过重置）
+            this._isGenerating = false;
             // 恢复生成按钮
             const genBtn = document.getElementById('btn-generate');
             if (genBtn) {

@@ -34,10 +34,43 @@ class AI {
         }
     }
 
+    /**
+     * 构造 HTTP 错误（区分 401/403/429/5xx，给出中文友好提示）
+     * P2-7：统一三处 !response.ok 逻辑，避免重复代码与误判 API Key
+     * @param {Response} response
+     * @returns {Promise<Error>} 带 status 字段的 Error
+     */
+    static async _buildHttpError(response) {
+        let serverMsg = '';
+        try {
+            const error = await response.json();
+            serverMsg = error.error?.message || error.message || '';
+        } catch {
+            // 响应非 JSON 格式
+        }
+        let userMsg;
+        if (response.status === 401 || response.status === 403) {
+            userMsg = 'API Key 无效或已过期，请前往设置检查';
+        } else if (response.status === 429) {
+            userMsg = '请求过于频繁，请稍后重试';
+        } else if (response.status >= 500) {
+            userMsg = `AI 服务暂时不可用（${response.status}），请稍后重试`;
+        } else {
+            userMsg = serverMsg || `API 请求失败: ${response.status}`;
+        }
+        const err = new Error(userMsg);
+        err.status = response.status;
+        return err;
+    }
+
     static async generateFeedback(transcript, modules, studentName, subjectName, style, subjectId, promptTemplateId, signal) {
         const apiKey = Storage.getApiKey();
         if (!apiKey) {
             throw new Error('请先设置 API Key');
+        }
+        // P3-5: 离线预检查，给出明确提示而非让 fetch 失败后包装为"生成反馈失败"
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            throw new Error('当前处于离线状态，请检查网络连接');
         }
 
         const toneDesc = this.getToneInstructions(style);
@@ -180,20 +213,24 @@ ${moduleInstructions}
             });
 
             if (!response.ok) {
-                let errorMsg = `API 请求失败: ${response.status}`;
-                try {
-                    const error = await response.json();
-                    if (error.error?.message) errorMsg = error.error.message;
-                } catch {
-                    // 响应非JSON格式，使用默认错误信息
-                }
-                throw new Error(errorMsg);
+                throw await this._buildHttpError(response);
             }
 
             const data = await response.json();
             const content = data.choices?.[0]?.message?.content || '';
-            return this.parseFeedback(content, modules);
+            // P5-3: AI 返回空内容时给出明确提示，避免调用方拿到空数组后渲染空白反馈
+            if (!content || !content.trim()) {
+                throw new Error('AI 未返回任何内容，请检查网络后重试');
+            }
+            const parsed = this.parseFeedback(content, modules);
+            if (!parsed || parsed.length === 0) {
+                throw new Error('AI 返回内容无法解析为有效反馈，请重试或调整模块设置');
+            }
+            return parsed;
         } catch (err) {
+            // P2-7: AbortError 优先放行，避免被包装成普通 Error 导致调用方判断失效
+            if (err.name === 'AbortError') throw err;
+            // API Key 未设置等业务错误直接抛出
             if (err.message.includes('API Key')) throw err;
             throw new Error('生成反馈失败：' + err.message);
         }
@@ -583,6 +620,10 @@ ${segment}
     static async chatCompletion(messages, { temperature = 0.7, maxTokens = 1500, signal } = {}) {
         const apiKey = Storage.getApiKey();
         if (!apiKey) throw new Error('请先设置 API Key');
+        // P3-5: 离线预检查
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            throw new Error('当前处于离线状态，请检查网络连接');
+        }
 
         const baseUrl = Storage.getApiBaseUrl() || 'https://api.deepseek.com';
         const response = await this._fetchWithRetry(`${baseUrl}/chat/completions`, {
@@ -601,14 +642,7 @@ ${segment}
         });
 
         if (!response.ok) {
-            let errorMsg = `API 请求失败: ${response.status}`;
-            try {
-                const error = await response.json();
-                if (error.error?.message) errorMsg = error.error.message;
-            } catch {
-                // 响应非JSON格式，使用默认错误信息
-            }
-            throw new Error(errorMsg);
+            throw await this._buildHttpError(response);
         }
 
         const data = await response.json();
@@ -630,6 +664,10 @@ ${segment}
     static async generateGroupFeedback(transcript, modules, studentNames, subjectName, style, subjectId, promptTemplateId, signal) {
         const apiKey = Storage.getApiKey();
         if (!apiKey) throw new Error('请先设置 API Key');
+        // P3-5: 离线预检查
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            throw new Error('当前处于离线状态，请检查网络连接');
+        }
 
         const toneDesc = this.getToneInstructions(style);
         const emojiReq = this.getEmojiInstructions(style);
@@ -807,20 +845,23 @@ ${moduleInstructions}
             });
 
             if (!response.ok) {
-                let errorMsg = `API 请求失败: ${response.status}`;
-                try {
-                    const error = await response.json();
-                    if (error.error?.message) errorMsg = error.error.message;
-                } catch {
-                    // 响应非JSON格式，使用默认错误信息
-                }
-                throw new Error(errorMsg);
+                throw await this._buildHttpError(response);
             }
 
             const data = await response.json();
             const content = data.choices?.[0]?.message?.content || '';
-            return this.parseGroupFeedback(content, studentNames, modules);
+            // P5-3: AI 返回空内容时给出明确提示
+            if (!content || !content.trim()) {
+                throw new Error('AI 未返回任何内容，请检查网络后重试');
+            }
+            const parsed = this.parseGroupFeedback(content, studentNames, modules);
+            if (!parsed || parsed.length === 0) {
+                throw new Error('AI 返回内容无法解析为有效反馈，请重试或调整模块设置');
+            }
+            return parsed;
         } catch (err) {
+            // P2-7: AbortError 优先放行
+            if (err.name === 'AbortError') throw err;
             if (err.message.includes('API Key')) throw err;
             throw new Error('生成反馈失败：' + err.message);
         }

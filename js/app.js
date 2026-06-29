@@ -153,13 +153,24 @@ class App {
     }
 
     openModal(modal) {
+        if (!modal) return;
         modal.classList.add('active');
         document.body.style.overflow = 'hidden';
+        // 激活焦点陷阱：ESC 关闭 + Tab 循环 + 焦点转移
+        // 确保对话框语义
+        modal.setAttribute('role', 'dialog');
+        modal.setAttribute('aria-modal', 'true');
+        FocusTrap.activate(modal, {
+            onEscape: () => this.closeModal(modal)
+        });
     }
 
     closeModal(modal) {
+        if (!modal) return;
         modal.classList.remove('active');
         document.body.style.overflow = '';
+        // 停用焦点陷阱（还原焦点）
+        FocusTrap.deactivate(modal);
     }
 
     renderFeedback(feedback) {

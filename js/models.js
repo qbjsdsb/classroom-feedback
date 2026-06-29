@@ -26,6 +26,23 @@ class DataStore {
     }
 
     /**
+     * P2-8：统一的写入失败 catch handler 工厂
+     * 调用方：DB.xxx(...).catch(DataStore._onWriteError('保存学生'))
+     * 行为：UI 已就绪则走 UI.notifyWriteError（QuotaExceededError 会 toast 提示），
+     *      否则降级为 console.warn，保留原诊断信息。
+     * @param {string} context - 业务上下文名（如 '保存学生'），用于日志与 toast 标识
+     */
+    static _onWriteError(context) {
+        return (err) => {
+            if (typeof UI !== 'undefined' && UI && UI.notifyWriteError) {
+                UI.notifyWriteError(err, `DataStore:${context}`);
+            } else {
+                console.warn(`[DataStore] ${context} 失败:`, err);
+            }
+        };
+    }
+
+    /**
      * 异步初始化：从 IndexedDB 加载所有数据到内存缓存
      */
     async init() {
@@ -201,9 +218,7 @@ class DataStore {
     // === 学生 CRUD ===
 
     _saveStudents() {
-        DB.putRecords('students', this._students).catch(e =>
-            console.warn('[DataStore] 保存学生失败:', e)
-        );
+        DB.putRecords('students', this._students).catch(DataStore._onWriteError('保存学生'));
     }
 
     getStudents() {
@@ -263,8 +278,8 @@ class DataStore {
         // 从缓存和 IndexedDB 中删除反馈和模板
         delete this._feedbackCache[id];
         delete this._templatesCache[id];
-        DB.deleteRecord('feedback', id).catch(e => console.warn('[DataStore] 删除反馈失败:', e));
-        DB.deleteRecord('templates', id).catch(e => console.warn('[DataStore] 删除模板失败:', e));
+        DB.deleteRecord('feedback', id).catch(DataStore._onWriteError('删除反馈'));
+        DB.deleteRecord('templates', id).catch(DataStore._onWriteError('删除模板'));
         // 硬删除时清理可能残留的 trash
         this._deleteTrash('student', id);
         return true;
@@ -287,8 +302,8 @@ class DataStore {
         this.removeStudentSubjects(id);
         delete this._feedbackCache[id];
         delete this._templatesCache[id];
-        DB.deleteRecord('feedback', id).catch(e => console.warn('[DataStore] 删除反馈失败:', e));
-        DB.deleteRecord('templates', id).catch(e => console.warn('[DataStore] 删除模板失败:', e));
+        DB.deleteRecord('feedback', id).catch(DataStore._onWriteError('删除反馈'));
+        DB.deleteRecord('templates', id).catch(DataStore._onWriteError('删除模板'));
         // 持久化快照到 trash，防止撤销窗口内刷新页面导致数据永久丢失
         const snapshot = { student, subjects, feedback, templates };
         this._saveTrash('student', id, snapshot);
@@ -313,12 +328,12 @@ class DataStore {
         if (snapshot.feedback) {
             this._feedbackCache[snapshot.student.id] = snapshot.feedback;
             DB.putRecord('feedback', { studentId: snapshot.student.id, history: snapshot.feedback })
-                .catch(e => console.warn('[DataStore] 恢复反馈失败:', e));
+                .catch(DataStore._onWriteError('恢复反馈'));
         }
         if (snapshot.templates) {
             this._templatesCache[snapshot.student.id] = snapshot.templates;
             DB.putRecord('templates', { studentId: snapshot.student.id, templates: snapshot.templates })
-                .catch(e => console.warn('[DataStore] 恢复模板失败:', e));
+                .catch(DataStore._onWriteError('恢复模板'));
         }
         // 恢复成功后清理 trash
         this._deleteTrash('student', snapshot.student.id);
@@ -343,9 +358,7 @@ class DataStore {
     }
 
     _saveSubjects() {
-        DB.putRecords('subjects', this._subjects).catch(e =>
-            console.warn('[DataStore] 保存科目失败:', e)
-        );
+        DB.putRecords('subjects', this._subjects).catch(DataStore._onWriteError('保存科目'));
     }
 
     getSubjects() {
@@ -398,9 +411,7 @@ class DataStore {
         const records = Object.entries(this._studentSubjects).map(([studentId, subjectIds]) => ({
             studentId, subjectIds
         }));
-        DB.putRecords('studentSubjects', records).catch(e =>
-            console.warn('[DataStore] 保存学生科目关联失败:', e)
-        );
+        DB.putRecords('studentSubjects', records).catch(DataStore._onWriteError('保存学生科目关联'));
     }
 
     getStudentSubjects(studentId) {
@@ -437,9 +448,7 @@ class DataStore {
         // 保留最近50条
         if (history.length > 50) history = history.slice(history.length - 50);
         this._feedbackCache[studentId] = history;
-        DB.putRecord('feedback', { studentId, history }).catch(e =>
-            console.warn('[DataStore] 保存反馈失败:', e)
-        );
+        DB.putRecord('feedback', { studentId, history }).catch(DataStore._onWriteError('保存反馈'));
         return history[history.length - 1];
     }
 
@@ -452,9 +461,7 @@ class DataStore {
         const item = history.find(f => f.id === feedbackId);
         if (!item) return false;
         item.feedback = updatedFeedback;
-        DB.putRecord('feedback', { studentId, history }).catch(e =>
-            console.warn('[DataStore] 更新反馈失败:', e)
-        );
+        DB.putRecord('feedback', { studentId, history }).catch(DataStore._onWriteError('更新反馈'));
         return true;
     }
 
@@ -463,9 +470,7 @@ class DataStore {
         if (!history) return false;
         const newHistory = history.filter(f => f.id !== feedbackId);
         this._feedbackCache[studentId] = newHistory;
-        DB.putRecord('feedback', { studentId, history: newHistory }).catch(e =>
-            console.warn('[DataStore] 删除反馈失败:', e)
-        );
+        DB.putRecord('feedback', { studentId, history: newHistory }).catch(DataStore._onWriteError('删除反馈'));
         // 硬删除时清理可能残留的 trash
         this._deleteTrash('feedback', `${studentId}_${feedbackId}`);
         return true;
@@ -483,7 +488,7 @@ class DataStore {
         const newHistory = history.filter(f => f.id !== feedbackId);
         this._feedbackCache[studentId] = newHistory;
         DB.putRecord('feedback', { studentId, history: newHistory })
-            .catch(e => console.warn('[DataStore] 软删除反馈失败:', e));
+            .catch(DataStore._onWriteError('软删除反馈'));
         const snapshot = { studentId, feedback };
         // 持久化快照到 trash，防止撤销窗口内刷新页面导致数据永久丢失
         this._saveTrash('feedback', `${studentId}_${feedbackId}`, snapshot);
@@ -502,7 +507,7 @@ class DataStore {
         history.unshift(snapshot.feedback);
         this._feedbackCache[snapshot.studentId] = history;
         DB.putRecord('feedback', { studentId: snapshot.studentId, history })
-            .catch(e => console.warn('[DataStore] 恢复反馈失败:', e));
+            .catch(DataStore._onWriteError('恢复反馈'));
         // 恢复成功后清理 trash
         this._deleteTrash('feedback', `${snapshot.studentId}_${snapshot.feedback.id}`);
         return true;
@@ -523,9 +528,7 @@ class DataStore {
         };
         templates.push(template);
         this._templatesCache[studentId] = templates;
-        DB.putRecord('templates', { studentId, templates }).catch(e =>
-            console.warn('[DataStore] 保存学生模板失败:', e)
-        );
+        DB.putRecord('templates', { studentId, templates }).catch(DataStore._onWriteError('保存学生模板'));
         return template;
     }
 
@@ -533,9 +536,7 @@ class DataStore {
         let templates = this._templatesCache[studentId] || [];
         templates = templates.filter(t => t.id !== templateId);
         this._templatesCache[studentId] = templates;
-        DB.putRecord('templates', { studentId, templates }).catch(e =>
-            console.warn('[DataStore] 删除学生模板失败:', e)
-        );
+        DB.putRecord('templates', { studentId, templates }).catch(DataStore._onWriteError('删除学生模板'));
         return true;
     }
 
@@ -547,16 +548,12 @@ class DataStore {
 
     setSubjectTemplate(subjectId, template) {
         this._subjectTemplatesCache[subjectId] = template;
-        DB.putRecord('subjectTemplates', { subjectId, template }).catch(e =>
-            console.warn('[DataStore] 保存科目模板失败:', e)
-        );
+        DB.putRecord('subjectTemplates', { subjectId, template }).catch(DataStore._onWriteError('保存科目模板'));
     }
 
     deleteSubjectTemplate(subjectId) {
         delete this._subjectTemplatesCache[subjectId];
-        DB.deleteRecord('subjectTemplates', subjectId).catch(e =>
-            console.warn('[DataStore] 删除科目模板失败:', e)
-        );
+        DB.deleteRecord('subjectTemplates', subjectId).catch(DataStore._onWriteError('删除科目模板'));
     }
 
     // === 全局快捷回复库 ===
@@ -581,9 +578,7 @@ class DataStore {
 
     saveQuickReplies(replies) {
         this._quickRepliesCache = replies;
-        DB.putRecord('quickReplies', { id: 'main', replies }).catch(e =>
-            console.warn('[DataStore] 保存快捷回复失败:', e)
-        );
+        DB.putRecord('quickReplies', { id: 'main', replies }).catch(DataStore._onWriteError('保存快捷回复'));
     }
 
     addQuickReply(content, category) {
@@ -622,9 +617,7 @@ class DataStore {
     // === Prompt 模板库 ===
 
     _savePromptTemplates() {
-        DB.putRecords('promptTemplates', this._promptTemplatesCache).catch(e =>
-            console.warn('[DataStore] 保存 Prompt 模板失败:', e)
-        );
+        DB.putRecords('promptTemplates', this._promptTemplatesCache).catch(DataStore._onWriteError('保存 Prompt 模板'));
     }
 
     getPromptTemplates() {

@@ -87,12 +87,25 @@ class Storage {
 
     static _setCache(key, value) {
         this._cache[key] = value;
-        DB.set(key, value).catch(e => console.warn('[Storage] IDB 写入失败:', e));
+        // P2-8：写入失败统一提示（QuotaExceededError 会 toast，其他仅控制台）
+        DB.set(key, value).catch(e => {
+            if (typeof UI !== 'undefined' && UI && UI.notifyWriteError) {
+                UI.notifyWriteError(e, 'Storage');
+            } else {
+                console.warn('[Storage] IDB 写入失败:', e);
+            }
+        });
     }
 
     static _removeCache(key) {
         delete this._cache[key];
-        DB.remove(key).catch(e => console.warn('[Storage] IDB 删除失败:', e));
+        DB.remove(key).catch(e => {
+            if (typeof UI !== 'undefined' && UI && UI.notifyWriteError) {
+                UI.notifyWriteError(e, 'Storage');
+            } else {
+                console.warn('[Storage] IDB 删除失败:', e);
+            }
+        });
     }
 
     // ===== 公共 API（保持同步签名） =====

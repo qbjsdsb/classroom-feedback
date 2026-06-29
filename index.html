@@ -10,8 +10,29 @@
     <link rel="manifest" href="manifest.json">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="theme-color" content="#6366F1">
+    <meta name="theme-color" content="#6365F1">
     <meta name="color-scheme" content="light dark">
+    <!-- P4-1: 非首屏脚本移到 head + defer，浏览器解析 HTML 时并行下载，解析完成后按顺序执行 -->
+    <!-- defer 保证执行顺序与原 body 末尾加载一致：db → storage → models → ... → app -->
+    <script defer src="js/db.js?v=4"></script>
+    <script defer src="js/storage.js?v=40"></script>
+    <script defer src="js/models.js?v=39"></script>
+    <script defer src="js/speech/providerInterface.js?v=1"></script>
+    <script defer src="js/speech/whisperProvider.js?v=6"></script>
+    <script defer src="js/speech/voskProvider.js?v=4"></script>
+    <script defer src="js/speech/sherpaProvider.js?v=6"></script>
+    <script defer src="js/recorder.js?v=66"></script>
+    <script defer src="js/ai.js?v=39"></script>
+    <script defer src="js/ui.js?v=42"></script>
+    <script defer src="js/components/bottomSheet.js?v=34"></script>
+    <script defer src="js/pages/studentsPage.js?v=35"></script>
+    <script defer src="js/pages/studentFormPage.js?v=35"></script>
+    <script defer src="js/pages/subjectSelectPage.js?v=33"></script>
+    <script defer src="js/pages/recordPage.js?v=44"></script>
+    <script defer src="js/pages/historyPage.js?v=38"></script>
+    <script defer src="js/pages/settingsPage.js?v=43"></script>
+    <!-- Transformers.js：由 whisperWorker.js 在 Worker 线程内 import 加载，主线程不再加载（避免阻塞 UI） -->
+    <script defer src="js/app.js?v=42"></script>
 </head>
 <body>
     <!-- 跳到主内容（无障碍快捷链接，键盘用户可跳过侧边栏导航） -->
@@ -142,35 +163,47 @@
         <div class="bottom-sheet-content"></div>
     </div>
 
-    <!-- Scripts -->
-    <script src="js/db.js?v=4"></script>
-    <script src="js/storage.js?v=40"></script>
-    <script src="js/models.js?v=39"></script>
-    <script src="js/speech/providerInterface.js?v=1"></script>
-    <script src="js/speech/whisperProvider.js?v=6"></script>
-    <script src="js/speech/voskProvider.js?v=4"></script>
-    <script src="js/speech/sherpaProvider.js?v=6"></script>
-    <script src="js/recorder.js?v=66"></script>
-    <script src="js/ai.js?v=39"></script>
-    <script src="js/ui.js?v=42"></script>
-    <script src="js/components/bottomSheet.js?v=34"></script>
-    <script src="js/pages/studentsPage.js?v=35"></script>
-    <script src="js/pages/studentFormPage.js?v=35"></script>
-    <script src="js/pages/subjectSelectPage.js?v=33"></script>
-    <script src="js/pages/recordPage.js?v=44"></script>
-    <script src="js/pages/historyPage.js?v=38"></script>
-    <script src="js/pages/settingsPage.js?v=43"></script>
-    <!-- Transformers.js：由 whisperWorker.js 在 Worker 线程内 import 加载，主线程不再加载（避免阻塞 UI） -->
-    <script src="js/app.js?v=42"></script>
+    <!-- Scripts (P4-1: 已移至 head + defer，启用并行下载) -->
     <script>
         // 注册 Service Worker 实现离线缓存
         // 使用相对路径 './sw.js'，适配 GitHub Pages 子路径部署（如 https://user.github.io/repo/）
         // 绝对路径 '/sw.js' 在子路径部署下会指向站点根，导致 404 注册失败
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('./sw.js').then(() => {
+            navigator.serviceWorker.register('./sw.js').then((reg) => {
                 console.log('[SW] Service Worker 注册成功');
+                // P3-4: 监听 SW 更新，新版本安装完成后提示用户刷新
+                // 不强制刷新，避免打断录音/输入等操作
+                reg.addEventListener('updatefound', () => {
+                    const newWorker = reg.installing;
+                    if (!newWorker) return;
+                    newWorker.addEventListener('statechange', () => {
+                        // 新 SW 已安装完成，且页面已有 controller（即非首次安装）
+                        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                            // SW 中调用了 skipWaiting()，新 SW 会立即激活
+                            if (typeof UI !== 'undefined' && UI.showToast) {
+                                UI.showToast('应用已更新，刷新以应用新版本', 6000, 'info');
+                            }
+                        }
+                    });
+                });
             }).catch((err) => {
                 console.warn('[SW] Service Worker 注册失败:', err);
+            });
+
+            // P3-5: 捕获 PWA 安装提示事件，供设置页"安装应用"按钮调用
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                window.__deferredInstallPrompt = e;
+                // 通知设置页（如果已渲染）显示安装按钮
+                window.dispatchEvent(new CustomEvent('pwa-installable'));
+            });
+
+            window.addEventListener('appinstalled', () => {
+                window.__deferredInstallPrompt = null;
+                window.dispatchEvent(new CustomEvent('pwa-installed'));
+                if (typeof UI !== 'undefined' && UI.showToast) {
+                    UI.showToast('已添加到主屏幕，可像原生应用一样使用', 3000, 'success');
+                }
             });
         }
     </script>

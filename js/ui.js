@@ -11,6 +11,103 @@ function escapeHtml(text) {
         .replace(/'/g, '&#039;');
 }
 
+// FocusTrap - 通用焦点陷阱工具（P2-4）
+// 供 modal/loading/confirm/log-panel 复用，统一无障碍焦点管理
+// 职责：记录打开前焦点 → 转移焦点到弹窗 → Tab 循环 → ESC 关闭 → 还原焦点
+const FocusTrap = {
+    _stack: [], // 支持嵌套弹窗的栈结构
+
+    /**
+     * 激活焦点陷阱
+     * @param {HTMLElement} container - 弹窗容器（焦点陷阱范围）
+     * @param {object} opts
+     * @param {Function} [opts.onEscape] - ESC 键回调（通常关闭弹窗）
+     * @param {HTMLElement} [opts.initialFocus] - 初始聚焦元素（默认第一个可聚焦元素）
+     */
+    activate(container, opts = {}) {
+        if (!container) return;
+        const { onEscape, initialFocus } = opts;
+
+        // 记录打开前焦点
+        const lastFocused = document.activeElement;
+
+        const handler = (e) => {
+            if (e.key === 'Escape') {
+                if (typeof onEscape === 'function') {
+                    e.preventDefault();
+                    onEscape();
+                }
+                return;
+            }
+            if (e.key === 'Tab') {
+                const focusable = this._getFocusable(container);
+                if (focusable.length === 0) {
+                    e.preventDefault();
+                    container.focus();
+                    return;
+                }
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (e.shiftKey) {
+                    if (document.activeElement === first || document.activeElement === container) {
+                        e.preventDefault();
+                        last.focus();
+                    }
+                } else {
+                    if (document.activeElement === last) {
+                        e.preventDefault();
+                        first.focus();
+                    }
+                }
+            }
+        };
+        document.addEventListener('keydown', handler, true);
+
+        const entry = { container, handler, lastFocused };
+        this._stack.push(entry);
+
+        // 转移焦点
+        requestAnimationFrame(() => {
+            if (initialFocus && typeof initialFocus.focus === 'function') {
+                initialFocus.focus();
+            } else {
+                const focusable = this._getFocusable(container);
+                if (focusable.length > 0) {
+                    focusable[0].focus();
+                } else {
+                    container.setAttribute('tabindex', '-1');
+                    container.focus();
+                }
+            }
+        });
+
+        // 返回 deactivate 句柄
+        return () => this.deactivate(container);
+    },
+
+    /**
+     * 停用焦点陷阱（还原焦点）
+     * @param {HTMLElement} container
+     */
+    deactivate(container) {
+        const idx = this._stack.findIndex(e => e.container === container);
+        if (idx === -1) return;
+        const entry = this._stack[idx];
+        this._stack.splice(idx, 1);
+        document.removeEventListener('keydown', entry.handler, true);
+        // 还原焦点
+        if (entry.lastFocused && typeof entry.lastFocused.focus === 'function') {
+            try { entry.lastFocused.focus(); } catch (e) {}
+        }
+    },
+
+    _getFocusable(container) {
+        const selector = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+        return Array.from(container.querySelectorAll(selector))
+            .filter(el => !el.disabled && el.offsetParent !== null);
+    }
+};
+
 const UI = {
     updateRecordButton(isRecording, hasPausedContent = false) {
         const btn = document.getElementById('btn-record');
@@ -23,17 +120,23 @@ const UI = {
             btn.classList.add('recording');
             icon.textContent = '⏸️';
             text.textContent = '暂停录音';
+            btn.setAttribute('aria-pressed', 'true');
+            btn.setAttribute('aria-label', '暂停录音（正在录音中）');
             if (status) status.textContent = '正在录音，点击暂停';
         } else if (hasPausedContent) {
             // 有暂停的内容，显示"继续录音"
             btn.classList.remove('recording');
             icon.textContent = '▶️';
             text.textContent = '继续录音';
+            btn.setAttribute('aria-pressed', 'true');
+            btn.setAttribute('aria-label', '继续录音（录音已暂停）');
             if (status) status.textContent = '录音已暂停，点击继续';
         } else {
             btn.classList.remove('recording');
             icon.textContent = '🔴';
             text.textContent = '开始录音';
+            btn.setAttribute('aria-pressed', 'false');
+            btn.setAttribute('aria-label', '开始录音');
             if (status) status.textContent = '点击开始录制课堂内容';
         }
     },
@@ -151,32 +254,11 @@ const UI = {
         overlay.appendChild(dialog);
         document.body.appendChild(overlay);
 
-        // 记录打开前焦点，关闭时还原
-        const lastFocused = document.activeElement;
-
         const close = () => {
             overlay.classList.remove('show');
-            document.removeEventListener('keydown', keyHandler, true);
+            FocusTrap.deactivate(dialog);
             setTimeout(() => overlay.remove(), 250);
-            // 还原焦点
-            if (lastFocused && typeof lastFocused.focus === 'function') {
-                lastFocused.focus();
-            }
         };
-
-        // Escape 关闭 + Enter 确认
-        const keyHandler = (e) => {
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                close();
-            } else if (e.key === 'Enter' && document.activeElement !== dialog.querySelector('.confirm-cancel-btn')) {
-                // Enter 默认触发确认（除非焦点在取消按钮上）
-                e.preventDefault();
-                close();
-                if (onConfirm) onConfirm();
-            }
-        };
-        document.addEventListener('keydown', keyHandler, true);
 
         dialog.querySelector('.confirm-cancel-btn').addEventListener('click', close);
         dialog.querySelector('.confirm-ok-btn').addEventListener('click', () => {
@@ -190,8 +272,19 @@ const UI = {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 overlay.classList.add('show');
-                // 聚焦确认按钮，便于键盘用户快速操作
-                dialog.querySelector('.confirm-ok-btn').focus();
+                // 激活焦点陷阱：ESC 关闭 + Tab 循环 + Enter 确认 + 初始聚焦确认按钮
+                FocusTrap.activate(dialog, {
+                    onEscape: close,
+                    initialFocus: dialog.querySelector('.confirm-ok-btn')
+                });
+                // Enter 确认（焦点陷阱之外补充的快捷键）
+                dialog.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' && document.activeElement !== dialog.querySelector('.confirm-cancel-btn')) {
+                        e.preventDefault();
+                        close();
+                        if (onConfirm) onConfirm();
+                    }
+                });
             });
         });
     },
@@ -223,9 +316,6 @@ const UI = {
         overlay.appendChild(dialog);
         document.body.appendChild(overlay);
 
-        // 记录打开前焦点，关闭时还原
-        const lastFocused = document.activeElement;
-
         const input = dialog.querySelector('.confirm-input');
         const okBtn = dialog.querySelector('.confirm-ok-btn');
 
@@ -239,21 +329,9 @@ const UI = {
 
         const close = () => {
             overlay.classList.remove('show');
-            document.removeEventListener('keydown', keyHandler, true);
+            FocusTrap.deactivate(dialog);
             setTimeout(() => overlay.remove(), 250);
-            if (lastFocused && typeof lastFocused.focus === 'function') {
-                lastFocused.focus();
-            }
         };
-
-        // Escape 关闭
-        const keyHandler = (e) => {
-            if (e.key === 'Escape') {
-                e.preventDefault();
-                close();
-            }
-        };
-        document.addEventListener('keydown', keyHandler, true);
 
         dialog.querySelector('.confirm-cancel-btn').addEventListener('click', close);
         okBtn.addEventListener('click', () => {
@@ -268,7 +346,11 @@ const UI = {
         requestAnimationFrame(() => {
             requestAnimationFrame(() => {
                 overlay.classList.add('show');
-                input.focus();
+                // 激活焦点陷阱：ESC 关闭 + Tab 循环 + 初始聚焦输入框
+                FocusTrap.activate(dialog, {
+                    onEscape: close,
+                    initialFocus: input
+                });
             });
         });
     },
@@ -322,18 +404,25 @@ const UI = {
             overlay.appendChild(btn);
         }
         document.body.appendChild(overlay);
+        // 激活焦点陷阱（有取消按钮时 Tab 可循环到按钮，无按钮时聚焦 overlay 本身）
+        // loading 通常无 ESC 关闭（强制等待），故不传 onEscape
+        FocusTrap.activate(overlay, {
+            initialFocus: overlay.querySelector('.loading-cancel-btn') || undefined
+        });
     },
 
     updateLoading(message) {
         const msgEl = document.getElementById('loading-message');
         if (msgEl) msgEl.textContent = message;
     },
-    
+
     hideLoading() {
         const overlay = document.getElementById('loading-overlay');
         if (overlay) {
             overlay.style.opacity = '0';
             overlay.style.transition = 'opacity 0.3s';
+            // 停用焦点陷阱（还原焦点）
+            FocusTrap.deactivate(overlay);
             // 挂载到 overlay 属性，供 showLoading 复用时取消，避免复用后被错误移除
             overlay._hideTimer = setTimeout(() => {
                 overlay.remove();
@@ -341,5 +430,34 @@ const UI = {
             }, 300);
         }
     },
-    
-    };
+
+    /**
+     * 统一处理 IDB / 存储写入失败的用户提示（P2-8）
+     * 策略：
+     *  - 始终记录到控制台（保留诊断信息）
+     *  - QuotaExceededError：toast 提示用户导出后清理（5 秒防抖，避免刷屏）
+     *  - 其他错误：仅控制台记录，不打扰用户操作
+     * @param {Error} err
+     * @param {string} context - 调用方标识，如 'Storage' / 'DataStore:保存学生'
+     */
+    notifyWriteError(err, context) {
+        // 始终记录到控制台
+        console.warn(`[${context}] 写入失败:`, err);
+
+        // 防抖：相同错误签名 5 秒内只提示一次，避免 toast 刷屏
+        const sig = `${context}:${err?.name || ''}:${err?.message || ''}`;
+        const now = Date.now();
+        if (this._lastWriteErrorSig === sig && now - (this._lastWriteErrorTime || 0) < 5000) {
+            return;
+        }
+        this._lastWriteErrorSig = sig;
+        this._lastWriteErrorTime = now;
+
+        // 仅对配额超限错误打扰用户（数据可能丢失，需要主动处理）
+        const isQuota = err && (err.name === 'QuotaExceededError' || /quota/i.test(err.message || ''));
+        if (isQuota) {
+            this.showToast('存储空间不足，请导出数据后清理', 5000, 'error');
+        }
+        // 其他写入错误（事务冲突、连接中断等）通常瞬时，不打扰用户
+    }
+};

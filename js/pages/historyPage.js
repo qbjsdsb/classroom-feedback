@@ -38,6 +38,13 @@ class HistoryPage {
         const subjectMap = {};
         subjects.forEach(s => subjectMap[s.id] = s);
 
+        // P4-3: 单次遍历统计每个科目的反馈数，避免后续 subjects.map 内对每个科目再 O(history) 过滤
+        // 原实现 O(subjects × history)，新实现 O(history)
+        const subjectCounts = {};
+        for (const item of allHistory) {
+            subjectCounts[item.subjectId] = (subjectCounts[item.subjectId] || 0) + 1;
+        }
+
         // 按科目筛选
         let filtered = this._subjectFilter
             ? allHistory.filter(item => item.subjectId === this._subjectFilter)
@@ -63,7 +70,7 @@ class HistoryPage {
                     <span class="history-filter-label">科目</span>
                     <button class="history-filter-chip ${!this._subjectFilter ? 'active' : ''}" onclick="historyPage.filterBySubject(null)">全部</button>
                     ${subjects.map(s => {
-                        const count = allHistory.filter(item => item.subjectId === s.id).length;
+                        const count = subjectCounts[s.id] || 0;
                         return count > 0 ? `<button class="history-filter-chip ${this._subjectFilter === s.id ? 'active' : ''}" style="--chip-color:${escapeHtml(s.color)}" onclick="historyPage.filterBySubject('${escapeHtml(s.id)}')">${escapeHtml(s.name)} (${count})</button>` : '';
                     }).join('')}
                 </div>

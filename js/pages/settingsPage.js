@@ -303,6 +303,13 @@ class SettingsPage {
                     <button id="btn-clear-all" class="danger-btn" style="margin-top:10px;width:100%;">🗑️ 清空所有数据</button>
                 </section>
 
+                <!-- P3-5: PWA 安装（仅当浏览器触发 beforeinstallprompt 时显示） -->
+                <section class="settings-group" id="pwa-install-section" style="display:none;">
+                    <h3 style="font-size:1.05rem;font-weight:700;">📲 安装应用</h3>
+                    <p class="hint-text" style="margin-top:4px;margin-bottom:10px;">安装到主屏幕，可像原生应用一样离线使用</p>
+                    <button id="btn-install-pwa" class="primary-btn" style="width:100%;">📲 安装到主屏幕</button>
+                </section>
+
                 <p class="hint-text" style="text-align:center;margin-top:8px;font-size:0.75rem;">
                     课堂反馈助手 v1.9 · 纯前端应用，数据保存在本地
                 </p>
@@ -897,14 +904,31 @@ class SettingsPage {
         const customDate = document.getElementById('custom-date')?.value || '';
 
         const moduleLengths = {};
+        let swappedCount = 0;
         document.querySelectorAll('.module-length-item').forEach(item => {
-            const moduleName = item.querySelector('.module-min-length')?.dataset.module;
-            const min = parseInt(item.querySelector('.module-min-length')?.value) || 50;
-            const max = parseInt(item.querySelector('.module-max-length')?.value) || 150;
+            const minInput = item.querySelector('.module-min-length');
+            const maxInput = item.querySelector('.module-max-length');
+            const moduleName = minInput?.dataset.module;
+            let min = parseInt(minInput?.value) || 50;
+            let max = parseInt(maxInput?.value) || 150;
+            // P5-3: 模块字数 min > max 校验
+            // - min/max 还需夹紧到合理范围（min≥10, max≥50）
+            if (min < 10) min = 10;
+            if (max < 50) max = 50;
+            if (min > max) {
+                // 自动交换，避免保存后 AI prompt 字数要求出现 min>max 的逻辑矛盾
+                const t = min; min = max; max = t;
+                swappedCount++;
+                if (minInput) minInput.value = min;
+                if (maxInput) maxInput.value = max;
+            }
             if (moduleName) {
                 moduleLengths[moduleName] = { min, max };
             }
         });
+        if (swappedCount > 0) {
+            UI.showToast(`检测到最小字数大于最大字数，已自动交换 ${swappedCount} 处`, 4000, 'info');
+        }
 
         Storage.saveStyle({
             tone: toneEl ? toneEl.value : 'formal',
@@ -1168,6 +1192,9 @@ class SettingsPage {
         });
         document.getElementById('import-file')?.addEventListener('change', (e) => this.importData(e));
 
+        // P3-5: PWA 安装按钮
+        this._bindPwaInstall();
+
         document.getElementById('btn-clear-all')?.addEventListener('click', () => {
             UI.showConfirmInput('确定清空所有数据？此操作不可恢复！', '删除', async () => {
                 try {
@@ -1193,6 +1220,49 @@ class SettingsPage {
         });
     }
 
+    /**
+     * P3-5: 绑定 PWA 安装按钮的显示与点击
+     * - 页面渲染时若已存在 __deferredInstallPrompt，立即显示按钮
+     * - 监听 pwa-installable / pwa-installed 事件动态切换可见性
+     * - 点击按钮触发原生安装提示
+     */
+    _bindPwaInstall() {
+        const section = document.getElementById('pwa-install-section');
+        const btn = document.getElementById('btn-install-pwa');
+        if (!section || !btn) return;
+
+        const updateVisibility = () => {
+            const canInstall = !!window.__deferredInstallPrompt;
+            section.style.display = canInstall ? '' : 'none';
+        };
+        updateVisibility();
+
+        // 兼容设置页已渲染后才触发 beforeinstallprompt 的情况
+        window.addEventListener('pwa-installable', updateVisibility);
+        window.addEventListener('pwa-installed', updateVisibility);
+
+        btn.addEventListener('click', async () => {
+            const promptEvent = window.__deferredInstallPrompt;
+            if (!promptEvent) {
+                UI.showToast('当前浏览器不支持安装，可使用浏览器菜单"添加到主屏幕"', 4000, 'info');
+                return;
+            }
+            try {
+                promptEvent.prompt();
+                const choice = await promptEvent.userChoice;
+                if (choice && choice.outcome === 'accepted') {
+                    UI.showToast('安装中，请稍候...', 2000, 'info');
+                }
+                // 无论用户是否接受，prompt 只能调用一次，清理引用
+                window.__deferredInstallPrompt = null;
+                updateVisibility();
+            } catch (e) {
+                console.warn('[Settings] PWA 安装失败:', e);
+                UI.showToast('安装失败，请尝试使用浏览器菜单"添加到主屏幕"');
+            }
+        });
+    }
+
     updateSubjectColor(id, color) {
         store.updateSubject(id, { color });
     }
@@ -1214,6 +1284,9 @@ class SettingsPage {
 
         const panel = document.createElement('div');
         panel.style.cssText = 'background:var(--bg);border-radius:var(--radius);width:100%;max-width:700px;max-height:85vh;display:flex;flex-direction:column;box-shadow:0 20px 60px rgba(0,0,0,0.3);';
+        panel.setAttribute('role', 'dialog');
+        panel.setAttribute('aria-modal', 'true');
+        panel.setAttribute('aria-label', '录音日志面板');
 
         panel.innerHTML = `
             <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-light);">
@@ -1241,6 +1314,18 @@ class SettingsPage {
 
         overlay.appendChild(panel);
         document.body.appendChild(overlay);
+
+        // 关闭函数（统一入口，激活焦点陷阱的 deactivate）
+        const closePanel = () => {
+            FocusTrap.deactivate(panel);
+            overlay.remove();
+        };
+
+        // 激活焦点陷阱：ESC 关闭 + Tab 循环 + 初始聚焦关闭按钮
+        FocusTrap.activate(panel, {
+            onEscape: closePanel,
+            initialFocus: panel.querySelector('#log-panel-close')
+        });
 
         // 渲染日志条目
         const renderLogs = (filter = 'all') => {
@@ -1272,10 +1357,10 @@ class SettingsPage {
 
         // 事件绑定
         document.getElementById('log-panel-close')?.addEventListener('click', () => {
-            overlay.remove();
+            closePanel();
         });
         overlay.addEventListener('click', (e) => {
-            if (e.target === overlay) overlay.remove();
+            if (e.target === overlay) closePanel();
         });
         document.getElementById('log-level-filter')?.addEventListener('change', (e) => {
             renderLogs(e.target.value);
