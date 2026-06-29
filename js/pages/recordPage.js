@@ -555,14 +555,23 @@ class RecordPage {
 
     clearTranscript() {
         const textarea = document.getElementById('transcript');
-        if (textarea) textarea.value = '';
-        recorder.accumulatedText = '';
-        recorder.finalTranscript = '';
-        recorder.interimTranscript = '';
-        this.updateWordCount('');
-        // 清空时立即保存，不走防抖
-        if (this._autoSaveTimer) { clearTimeout(this._autoSaveTimer); this._autoSaveTimer = null; }
-        this._doSaveTranscript('');
+        const hasContent = (textarea && textarea.value.trim()) || recorder.accumulatedText.trim();
+        // 有内容时需二次确认，避免误点清空丢失全部输入
+        const doClear = () => {
+            if (textarea) textarea.value = '';
+            recorder.accumulatedText = '';
+            recorder.finalTranscript = '';
+            recorder.interimTranscript = '';
+            this.updateWordCount('');
+            // 清空时立即保存，不走防抖
+            if (this._autoSaveTimer) { clearTimeout(this._autoSaveTimer); this._autoSaveTimer = null; }
+            this._doSaveTranscript('');
+        };
+        if (hasContent) {
+            UI.showConfirm('确定要清空当前所有课堂内容吗？此操作不可撤销。', doClear);
+        } else {
+            doClear();
+        }
     }
 
     _autoSaveTranscript(text) {

@@ -1267,7 +1267,7 @@ header h1 {
 /* 悬浮保存按钮（固定在右下角，仅设置页面显示） */
 .settings-fab-save {
     position: fixed;
-    bottom: 32px;
+    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
     right: 32px;
     z-index: 1000;
     padding: 14px 28px;
@@ -2044,7 +2044,11 @@ header h1 {
     border-radius: 50px;
     font-size: 0.9rem;
     z-index: 1000;
-    white-space: nowrap;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-width: calc(100vw - 32px);
+    box-sizing: border-box;
+    text-align: center;
     box-shadow: 0 12px 32px rgba(0,0,0,0.2), 0 4px 8px rgba(0,0,0,0.1);
     font-weight: 500;
     opacity: 0;
@@ -2701,23 +2705,21 @@ header h1 {
     position: absolute;
     top: -6px;
     right: -6px;
-    width: 18px;
-    height: 18px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     background: var(--danger);
     color: white;
     border: none;
-    font-size: 12px;
+    font-size: 13px;
     line-height: 1;
     cursor: pointer;
-    display: none;
+    display: flex;
     align-items: center;
     justify-content: center;
     z-index: 2;
     padding: 0;
-}
-.quick-reply-item:hover .quick-reply-del {
-    display: flex;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
 }
 .quick-reply-del:hover {
     transform: scale(1.15);

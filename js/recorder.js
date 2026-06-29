@@ -1041,6 +1041,13 @@ class Recorder {
                 while (currentProvider) {
                     if (statusEl) statusEl.textContent = `正在启动${currentProvider.displayName}...`;
                     started = await this._tryStartLocalProvider(currentProvider);
+                    // 取消检查：await 期间用户点了 stop/pause（_userIntendsToRecord 被清），
+                    // 则中止降级循环，避免 stop 后"复活"会话
+                    if (!this._userIntendsToRecord) {
+                        this._log('info', '降级循环中止', '用户在启动期间停止/暂停');
+                        started = false;
+                        break;
+                    }
                     if (started) break;
                     // 启动失败
                     this._log('warn', '本地引擎启动失败', `${currentProvider.id} start()返回false`);
@@ -1601,6 +1608,9 @@ class Recorder {
             try { this._importAudioCtx.close(); } catch(e) {}
             this._importAudioCtx = null;
         }
+        // 公共清理：Auto 降级缓存（本地分支和浏览器分支都需要，否则瞬时失败会永久跳过引擎）
+        this._resolvedAutoProvider = null;
+        this._failedAutoProviders.clear();
 
         const speechConfig = Storage.getSpeechConfig();
         const _localProvider = this._getActiveLocalProvider();
@@ -1644,10 +1654,10 @@ class Recorder {
             this.sessionStartTime = null;
             this.restartCount = 0;
             this.segmentCount = 0;
-            // 清除 Auto 降级缓存：下次 start 重新评估环境
-            // （适应运行时环境变化，如用户部署了 COOP/COEP 后 Sherpa 变为可用）
-            this._resolvedAutoProvider = null;
-            this._failedAutoProviders.clear(); // 新会话重置失败记录，让所有引擎重新参与评估
+            this.lastFinalCount = 0;
+            this._resetDedupAnchors(); // 完全重置去重锚点
+            this.isRecording = false; // 关键：本地分支必须重置，否则下次 start() 被拦截无法重启
+            // Auto 降级缓存已在公共前置部分清理
 
             // 不 terminate Worker（保留 pipeline，下次录音直接用）
             return;
@@ -1705,6 +1715,9 @@ class Recorder {
     }
 
     toggle() {
+        // 防重入：start/resume 是 async，等待期间用户快速点击会导致状态错乱
+        // （如 start 的 await 期间点 pause，或 resume 的 await 期间点 start）
+        if (this._isStarting) return;
         // 用 _userIntendsToRecord 而非 isRecording 判断用户是否在录音：
         // 重启循环期间 isRecording=false 但 _userIntendsToRecord=true，
         // 此时点击应走 pause()（停止当前会话），而非 start()（会重置时长/计数）
@@ -1803,90 +1816,98 @@ class Recorder {
     // 恢复录音
     async resume() {
         if (this.isRecording) return;
-
-        this._log('info', '恢复录音', `provider=${Storage.getSpeechConfig().provider}`);
-        this._isPaused = false; // 清除暂停状态
-
-        // 同步用户在暂停期间对文本框的编辑到 accumulatedText
-        // 避免用户手动编辑文本框后恢复录音，编辑内容被覆盖丢失
-        const textarea = document.getElementById('transcript');
-        if (textarea) {
-            this.accumulatedText = textarea.value.trim();
-            if (this.accumulatedText) this.accumulatedText += '\n';
-        }
-
-        // 隐藏停止按钮
-        const stopBtn = document.getElementById('btn-stop-record');
-        if (stopBtn) stopBtn.style.display = 'none';
-
-        // 同步恢复课堂计时器
-        if (recordPage && typeof recordPage.startClassTimer === 'function') {
-            recordPage.startClassTimer();
-        }
-
-        const speechConfig = Storage.getSpeechConfig();
-        const _localProvider = this._getActiveLocalProvider();
-        if (_localProvider) {
-            this.sessionStartTime = Date.now() - (this._whisperPausedDuration || 0);
-            const started = await _localProvider.start({
-                onResult: (text) => this._appendResult(text),
-                onError: (err) => this._log('error', '本地识别错误', err.message)
-            });
-            if (started) {
-                this.startTimer();
-                this.isRecording = true;
-                UI.updateRecordButton(true);
-            } else {
-                // 本地识别启动失败，重置暂停状态并提示用户
-                this._isPaused = false;
-                this._resolvedAutoProvider = null; // 清除 Auto 缓存，保持状态干净
-                this._log('error', '本地识别恢复录音失败');
-                UI.showToast('恢复录音失败，请重试');
-                UI.updateRecordButton(false);
-            }
-            return;
-        }
-        
-        if (!this.hasSpeechApi) {
-            UI.showToast('您的浏览器不支持语音识别');
-            return;
-        }
-        
-        // 恢复之前的计时（不重置sessionStartTime，扣除暂停时长）
-        if (!this.sessionStartTime) {
-            this.sessionStartTime = Date.now();
-        } else if (this._whisperPausedDuration) {
-            // 扣除暂停时长，确保录音时长不包含暂停时间
-            this.sessionStartTime = Date.now() - this._whisperPausedDuration;
-            this._whisperPausedDuration = 0;
-        }
-        
-        this.finalTranscript = '';
-        this.interimTranscript = '';
-        this._manualStop = false; // 确保恢复录音不受残留标志影响
-        this._userIntendsToRecord = true; // 恢复后启用健康检查和自动重启
-        this.lastFinalCount = 0;
-        this._resetDedupAnchors(); // 恢复录音，完全重置去重锚点
-        this.lastResultTime = Date.now();
-        this.shouldRestart = true;
-        this.currentDelay = this.restartDelay;
-        this._restartFailCount = 0;
-        this._networkErrorCount = 0; // 恢复录音，重置网络错误计数
-        this._isTransientError = false; // 恢复录音，重置瞬时错误标志
-        this._healthCheckFailCount = 0; // 恢复录音，重置健康检查失败计数
-
-        // 创建新的 recognition 实例，避免旧实例状态残留
-        this.recognition = this._createRecognition();
+        // 防重入保护：resume 是 async，await 期间用户快速点击会导致与 start/pause 竞争
+        if (this._isStarting) return;
+        this._isStarting = true;
         try {
-            this.recognition.start();
-            this._setStartTimeout(); // 设置 onstart 超时检测
-            // 启动成功后开启健康检查
-            this._startHealthCheck();
-        } catch (err) {
-            // start() 失败，通过 _scheduleRestart 持续重试
-            this._log('warn', 'resume() recognition.start()失败', err.message);
-            UI.showToast('正在恢复语音识别，请稍候...', 2000);
-            this._scheduleRestart();
+            this._log('info', '恢复录音', `provider=${Storage.getSpeechConfig().provider}`);
+            this._isPaused = false; // 清除暂停状态
+
+            // 同步用户在暂停期间对文本框的编辑到 accumulatedText
+            // 避免用户手动编辑文本框后恢复录音，编辑内容被覆盖丢失
+            const textarea = document.getElementById('transcript');
+            if (textarea) {
+                this.accumulatedText = textarea.value.trim();
+                if (this.accumulatedText) this.accumulatedText += '\n';
+            }
+
+            // 隐藏停止按钮
+            const stopBtn = document.getElementById('btn-stop-record');
+            if (stopBtn) stopBtn.style.display = 'none';
+
+            // 同步恢复课堂计时器
+            if (recordPage && typeof recordPage.startClassTimer === 'function') {
+                recordPage.startClassTimer();
+            }
+
+            const speechConfig = Storage.getSpeechConfig();
+            const _localProvider = this._getActiveLocalProvider();
+            if (_localProvider) {
+                this.sessionStartTime = Date.now() - (this._whisperPausedDuration || 0);
+                const started = await _localProvider.start({
+                    onResult: (text) => this._appendResult(text),
+                    onError: (err) => this._log('error', '本地识别错误', err.message)
+                });
+                if (started) {
+                    this.startTimer();
+                    this.isRecording = true;
+                    this._userIntendsToRecord = true; // 恢复录音，启用健康检查/自动重启语义
+                    this._whisperPausedDuration = 0; // 清零暂停时长，避免跨会话残留
+                    UI.updateRecordButton(true);
+                } else {
+                    // 本地识别启动失败，重置暂停状态并提示用户
+                    this._isPaused = false;
+                    this._resolvedAutoProvider = null; // 清除 Auto 缓存，保持状态干净
+                    this._log('error', '本地识别恢复录音失败');
+                    UI.showToast('恢复录音失败，请点击停止后重新开始');
+                    UI.updateRecordButton(false);
+                }
+                return;
+            }
+
+            if (!this.hasSpeechApi) {
+                UI.showToast('您的浏览器不支持语音识别');
+                return;
+            }
+
+            // 恢复之前的计时（不重置sessionStartTime，扣除暂停时长）
+            if (!this.sessionStartTime) {
+                this.sessionStartTime = Date.now();
+            } else if (this._whisperPausedDuration) {
+                // 扣除暂停时长，确保录音时长不包含暂停时间
+                this.sessionStartTime = Date.now() - this._whisperPausedDuration;
+                this._whisperPausedDuration = 0;
+            }
+
+            this.finalTranscript = '';
+            this.interimTranscript = '';
+            this._manualStop = false; // 确保恢复录音不受残留标志影响
+            this._userIntendsToRecord = true; // 恢复后启用健康检查和自动重启
+            this.lastFinalCount = 0;
+            this._resetDedupAnchors(); // 恢复录音，完全重置去重锚点
+            this.lastResultTime = Date.now();
+            this.shouldRestart = true;
+            this.currentDelay = this.restartDelay;
+            this._restartFailCount = 0;
+            this._networkErrorCount = 0; // 恢复录音，重置网络错误计数
+            this._isTransientError = false; // 恢复录音，重置瞬时错误标志
+            this._healthCheckFailCount = 0; // 恢复录音，重置健康检查失败计数
+
+            // 创建新的 recognition 实例，避免旧实例状态残留
+            this.recognition = this._createRecognition();
+            try {
+                this.recognition.start();
+                this._setStartTimeout(); // 设置 onstart 超时检测
+                // 启动成功后开启健康检查
+                this._startHealthCheck();
+            } catch (err) {
+                // start() 失败，通过 _scheduleRestart 持续重试
+                this._log('warn', 'resume() recognition.start()失败', err.message);
+                UI.showToast('正在恢复语音识别，请稍候...', 2000);
+                this._scheduleRestart();
+            }
+        } finally {
+            this._isStarting = false; // 释放防重入锁
         }
     }
 
