@@ -61,9 +61,10 @@ class RecordPage {
                                     ⏹️ 停止录音
                                 </button>
                             </div>
-                            <p class="record-status">点击开始录制课堂内容</p>
+                            <p class="record-status">点击开始录制课堂内容
+                                <span id="engine-badge" class="engine-badge" style="display:none;"></span>
+                            </p>
                             <div class="recording-timer" id="recording-timer" style="display:none;"></div>
-                            <p class="long-press-hint">👆 长按录音，松手停止</p>
                             <div class="import-audio-section" style="margin-top:12px;text-align:center;">
                                 <label for="audio-file-import" style="color:var(--primary);font-size:0.85rem;cursor:pointer;text-decoration:underline;">
                                     📁 导入录音文件（语音转文字）
@@ -469,8 +470,8 @@ class RecordPage {
     }
 
     bindEvents() {
-        // 绑定长按录音事件（替代普通点击）
-        recorder.bindLongPressEvents();
+        // 绑定录音按钮单击事件（单击切换：开始/暂停/继续）
+        recorder.bindRecordButtonEvents();
 
         document.getElementById('btn-generate')?.addEventListener('click', () => this.generateFeedback());
         document.getElementById('btn-page-settings')?.addEventListener('click', () => app.openSettings());
@@ -780,7 +781,16 @@ class RecordPage {
             style = { ...style, customPrompt: '' };
         }
 
-        UI.showLoading('正在分析课堂内容...');
+        // AbortController：支持用户取消 + 60s 超时自动取消，避免网络挂起时永久锁屏
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
+        // 用户主动取消时给出提示
+        const onCancel = () => {
+            clearTimeout(timeoutId);
+            try { controller.abort(); } catch (e) {}
+            UI.showToast('已取消生成', 'info');
+        };
+        UI.showLoading('正在分析课堂内容...', onCancel);
 
         // 进度提示定时器
         const progressTimer = setInterval(() => {
@@ -806,7 +816,7 @@ class RecordPage {
                 }
 
                 UI.updateLoading('正在为 ' + studentNames.length + ' 位学生生成反馈...');
-                const feedbacks = await AiService.generateGroupFeedback(text, moduleNames, studentNames, subjectName, style, subject?.id, this._selectedPromptTemplateId);
+                const feedbacks = await AiService.generateGroupFeedback(text, moduleNames, studentNames, subjectName, style, subject?.id, this._selectedPromptTemplateId, controller.signal);
 
                 // 为每位学生保存到各自的历史记录
                 const MAX_STORED_TRANSCRIPT = 10000;
@@ -843,7 +853,7 @@ class RecordPage {
                 // ===== 单学生模式：原有逻辑 =====
                 let studentName = student ? student.name : '';
                 UI.updateLoading('正在生成反馈内容...');
-                const feedback = await AiService.generateFeedback(text, moduleNames, studentName, subjectName, style, subject?.id, this._selectedPromptTemplateId);
+                const feedback = await AiService.generateFeedback(text, moduleNames, studentName, subjectName, style, subject?.id, this._selectedPromptTemplateId, controller.signal);
 
                 if (student) {
                     const MAX_STORED_TRANSCRIPT = 10000;
@@ -863,8 +873,12 @@ class RecordPage {
                 this.clearTranscript();
             }
         } catch (err) {
-            UI.showToast('生成失败：' + err.message);
+            // 用户主动取消或超时取消，不显示错误（取消时已通过 onCancel Toast 提示）
+            if (err.name !== 'AbortError') {
+                UI.showToast('生成失败：' + err.message);
+            }
         } finally {
+            clearTimeout(timeoutId);
             clearInterval(progressTimer);
             UI.hideLoading();
             // 清除本次使用的模板ID，避免下次生成时无意识地继续使用

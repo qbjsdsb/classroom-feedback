@@ -362,7 +362,15 @@ class HistoryPage {
             return;
         }
 
-        UI.showLoading('正在分析学习情况，请稍候...');
+        // AbortController：支持用户取消 + 60s 超时自动取消，避免网络挂起时永久锁屏
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000);
+        const onCancel = () => {
+            clearTimeout(timeoutId);
+            try { controller.abort(); } catch (e) {}
+            UI.showToast('已取消生成', 'info');
+        };
+        UI.showLoading('正在分析学习情况，请稍候...', onCancel);
 
         try {
             // 构建历史反馈摘要（控制总长度，避免API超限）
@@ -429,15 +437,19 @@ ${feedbackSummary}
             const content = await AI.chatCompletion([
                 { role: 'system', content: '你是一位经验丰富的教育培训老师，擅长分析学生学习情况并给出专业建议。' },
                 { role: 'user', content: prompt }
-            ], { temperature: 0.7, maxTokens: 1500 });
+            ], { temperature: 0.7, maxTokens: 1500, signal: controller.signal });
 
             // 解析总结内容
             const summary = this.parseSummary(content);
             this.showSummaryModal(summary, student.name);
 
         } catch (err) {
-            UI.showToast('生成总结失败：' + err.message);
+            // 用户主动取消或超时取消，不显示错误（取消时已通过 onCancel Toast 提示）
+            if (err.name !== 'AbortError') {
+                UI.showToast('生成总结失败：' + err.message);
+            }
         } finally {
+            clearTimeout(timeoutId);
             UI.hideLoading();
         }
     }

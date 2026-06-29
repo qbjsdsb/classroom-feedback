@@ -21,12 +21,6 @@ class Recorder {
         this.timerInterval = null;
         this.permissionChecked = false;
         this.hasSpeechApi = false;
-        // 长按录音相关
-        this.longPressTimer = null;
-        this.isLongPress = false;
-        this.longPressThreshold = 500;
-        this.touchStartY = 0;
-        this.touchMoved = false;
         // 绑定的事件处理器引用（用于正确移除）
         this._boundHandlers = {};
         // 长时间录音增强
@@ -301,6 +295,8 @@ class Recorder {
             UI.updateRecordButton(true);
             this.startTimer();
             this._startSilenceDetection();
+            // 显示引擎 badge（浏览器原生模式）
+            this._setEngineBadge('browser');
             this._startHealthCheck();
             // 同步启动课堂计时器
             if (recordPage && typeof recordPage.startClassTimer === 'function') {
@@ -1068,6 +1064,8 @@ class Recorder {
                 if (started) {
                     if (statusEl) statusEl.textContent = '正在录音，点击暂停';
                     this.startTimer();
+                    // 显示当前引擎 badge（本地引擎模式）
+                    this._setEngineBadge(currentProvider ? currentProvider.id : null);
                 } else {
                     // 所有尝试都失败：恢复按钮状态
                     UI.updateRecordButton(false);
@@ -1530,6 +1528,35 @@ class Recorder {
     }
 
     /**
+     * 设置/清空录音页的引擎 badge
+     * @param {string|null} engineId - 引擎ID（vosk/whisper/sherpa/browser），null 清空
+     */
+    _setEngineBadge(engineId) {
+        const badge = document.getElementById('engine-badge');
+        if (!badge) return;
+        if (!engineId) {
+            badge.style.display = 'none';
+            badge.textContent = '';
+            badge.className = 'engine-badge';
+            return;
+        }
+        const map = {
+            vosk: { label: 'Vosk', cls: 'engine-badge-vosk' },
+            whisper: { label: 'Whisper', cls: 'engine-badge-whisper' },
+            sherpa: { label: 'Sherpa', cls: 'engine-badge-sherpa' },
+            browser: { label: '浏览器', cls: 'engine-badge-browser' },
+        };
+        const info = map[engineId];
+        if (!info) {
+            badge.style.display = 'none';
+            return;
+        }
+        badge.textContent = info.label;
+        badge.className = 'engine-badge ' + info.cls;
+        badge.style.display = 'inline-block';
+    }
+
+    /**
      * 预加载 Whisper 模型（代理到 WhisperProvider）
      */
     async preloadWhisper(onProgress) {
@@ -1611,6 +1638,8 @@ class Recorder {
         // 公共清理：Auto 降级缓存（本地分支和浏览器分支都需要，否则瞬时失败会永久跳过引擎）
         this._resolvedAutoProvider = null;
         this._failedAutoProviders.clear();
+        // 清空引擎 badge
+        this._setEngineBadge(null);
 
         const speechConfig = Storage.getSpeechConfig();
         const _localProvider = this._getActiveLocalProvider();
@@ -1911,156 +1940,26 @@ class Recorder {
         }
     }
 
-    // ========== 长按录音支持 ==========
+    // ========== 录音按钮事件绑定（单击模型） ==========
 
-    bindLongPressEvents() {
+    bindRecordButtonEvents() {
         const btn = document.getElementById('btn-record');
         if (!btn) return;
-
-        // 先移除旧的事件监听器
-        this._unbindLongPressEvents(btn);
-
-        // 创建并缓存绑定后的处理器引用
-        this._boundHandlers.touchstart = this._onTouchStart.bind(this);
-        this._boundHandlers.touchend = this._onTouchEnd.bind(this);
-        this._boundHandlers.touchcancel = this._onTouchCancel.bind(this);
-        this._boundHandlers.touchmove = this._onTouchMove.bind(this);
-        this._boundHandlers.mousedown = this._onMouseDown.bind(this);
-        this._boundHandlers.mouseup = this._onMouseUp.bind(this);
-        this._boundHandlers.mouseleave = this._onMouseLeave.bind(this);
-        this._boundHandlers.contextmenu = (e) => e.preventDefault();
-
-        // 触摸事件（手机端）
-        btn.addEventListener('touchstart', this._boundHandlers.touchstart, { passive: false });
-        btn.addEventListener('touchend', this._boundHandlers.touchend, { passive: false });
-        btn.addEventListener('touchcancel', this._boundHandlers.touchcancel, { passive: false });
-        btn.addEventListener('touchmove', this._boundHandlers.touchmove, { passive: false });
-
-        // 鼠标事件（电脑端，包括 macOS）
-        btn.addEventListener('mousedown', this._boundHandlers.mousedown);
-        btn.addEventListener('mouseup', this._boundHandlers.mouseup);
-        btn.addEventListener('mouseleave', this._boundHandlers.mouseleave);
-
-        btn.addEventListener('contextmenu', this._boundHandlers.contextmenu);
+        // 先解绑旧监听器（兼容从长按模型升级的场景）
+        this._unbindRecordButtonEvents(btn);
+        // 单击切换：开始 → 暂停 → 继续 → ...
+        this._boundHandlers.click = (e) => {
+            e.preventDefault();
+            this.toggle();
+        };
+        btn.addEventListener('click', this._boundHandlers.click);
     }
 
-    _unbindLongPressEvents(btn) {
+    _unbindRecordButtonEvents(btn) {
         if (!btn) btn = document.getElementById('btn-record');
         if (!btn) return;
         const h = this._boundHandlers;
-        if (h.touchstart) btn.removeEventListener('touchstart', h.touchstart);
-        if (h.touchend) btn.removeEventListener('touchend', h.touchend);
-        if (h.touchcancel) btn.removeEventListener('touchcancel', h.touchcancel);
-        if (h.touchmove) btn.removeEventListener('touchmove', h.touchmove);
-        if (h.mousedown) btn.removeEventListener('mousedown', h.mousedown);
-        if (h.mouseup) btn.removeEventListener('mouseup', h.mouseup);
-        if (h.mouseleave) btn.removeEventListener('mouseleave', h.mouseleave);
-        if (h.contextmenu) btn.removeEventListener('contextmenu', h.contextmenu);
-    }
-
-    _onTouchStart(e) {
-        e.preventDefault();
-        this.touchMoved = false;
-        this.touchStartY = e.touches[0].clientY;
-        this.isLongPress = false;
-
-        this.longPressTimer = setTimeout(() => {
-            this.isLongPress = true;
-            this._startRecordingVisual();
-        }, this.longPressThreshold);
-    }
-
-    _onTouchMove(e) {
-        if (Math.abs(e.touches[0].clientY - this.touchStartY) > 20) {
-            this.touchMoved = true;
-            // 用 _userIntendsToRecord 而非 isRecording：重启循环期间 isRecording=false 但用户仍在长按录音，
-            // 此时滑动应能取消（与 _onTouchEnd/_onMouseUp/_onTouchCancel/_onMouseLeave 行为一致）
-            if (this.isLongPress && this._userIntendsToRecord) {
-                this.stop();
-                this._cancelLongPress();
-            }
-        }
-    }
-
-    _onTouchEnd(e) {
-        e.preventDefault();
-        if (this.isLongPress) {
-            if (this._userIntendsToRecord) {
-                this.stop();
-            }
-        } else {
-            this._cancelLongPress();
-            this.toggle();
-        }
-        this._resetLongPress();
-    }
-
-    _onTouchCancel(e) {
-        this._cancelLongPress();
-        if (this._userIntendsToRecord) {
-            this.stop();
-        }
-        this._resetLongPress();
-    }
-
-    _onMouseDown(e) {
-        if (e.button !== 0) return;
-        this.isLongPress = false;
-        this.longPressTimer = setTimeout(() => {
-            this.isLongPress = true;
-            this._startRecordingVisual();
-        }, this.longPressThreshold);
-    }
-
-    _onMouseUp(e) {
-        if (e.button !== 0) return;
-        if (this.isLongPress) {
-            if (this._userIntendsToRecord) {
-                this.stop();
-            }
-        } else {
-            this._cancelLongPress();
-            this.toggle();
-        }
-        this._resetLongPress();
-    }
-
-    _onMouseLeave(e) {
-        if (this.isLongPress && this._userIntendsToRecord) {
-            this.stop();
-        }
-        this._cancelLongPress();
-        this._resetLongPress();
-    }
-
-    _onClick(e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-
-    _startRecordingVisual() {
-        const btn = document.getElementById('btn-record');
-        if (btn) {
-            btn.classList.add('recording-active');
-        }
-        this.start();
-    }
-
-    _cancelLongPress() {
-        if (this.longPressTimer) {
-            clearTimeout(this.longPressTimer);
-            this.longPressTimer = null;
-        }
-    }
-
-    _resetLongPress() {
-        this._cancelLongPress();
-        this.isLongPress = false;
-        this.touchMoved = false;
-        const btn = document.getElementById('btn-record');
-        if (btn) {
-            btn.classList.remove('recording-active');
-        }
+        if (h.click) btn.removeEventListener('click', h.click);
     }
 }
 

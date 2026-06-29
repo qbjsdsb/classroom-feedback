@@ -909,16 +909,6 @@ header h1 {
 .record-status { color: var(--text-muted); font-size: 0.9rem; margin-top: 4px; }
 .record-hint { color: var(--text-muted); font-size: 0.8rem; margin-top: 8px; text-align: center; padding: 0 20px; }
 
-/* 长按录音视觉反馈 */
-.record-btn.recording-active {
-    transform: scale(1.15);
-    box-shadow: 0 0 0 20px var(--primary-shadow), var(--shadow-xl);
-}
-
-.record-btn.recording-active .record-icon {
-    animation: micShake 0.5s ease-in-out infinite;
-}
-
 .stop-record-btn {
     padding: 10px 16px;
     border: 2px solid var(--danger);
@@ -935,11 +925,6 @@ header h1 {
     color: white;
 }
 
-@keyframes micShake {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.1); }
-}
-
 /* 录音波纹效果 */
 .record-btn.recording::before {
     content: '';
@@ -953,26 +938,6 @@ header h1 {
 @keyframes recordRipple {
     0% { transform: scale(1); opacity: 1; }
     100% { transform: scale(1.5); opacity: 0; }
-}
-
-/* 长按提示 */
-.long-press-hint {
-    font-size: 0.75rem;
-    color: var(--text-muted);
-    margin-top: 4px;
-    opacity: 0.7;
-}
-
-@media (hover: none) and (pointer: coarse) {
-    .long-press-hint {
-        display: block;
-    }
-}
-
-@media (hover: hover) {
-    .long-press-hint {
-        display: none;
-    }
 }
 
 /* ===== Transcript ===== */
@@ -1264,40 +1229,7 @@ header h1 {
     gap: 16px;
 }
 
-/* 悬浮保存按钮（固定在右下角，仅设置页面显示） */
-.settings-fab-save {
-    position: fixed;
-    bottom: calc(80px + env(safe-area-inset-bottom, 0px));
-    right: 32px;
-    z-index: 1000;
-    padding: 14px 28px;
-    font-size: 0.95rem;
-    font-weight: 600;
-    color: #fff;
-    background: var(--primary-gradient);
-    border: none;
-    border-radius: 50px;
-    cursor: pointer;
-    box-shadow: 0 6px 24px var(--primary-shadow);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-    display: none;
-    align-items: center;
-    gap: 6px;
-}
-
-/* 仅在设置页面显示悬浮保存按钮 */
-#settings-page .settings-fab-save {
-    display: flex;
-}
-
-.settings-fab-save:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 32px var(--primary-shadow);
-}
-
-.settings-fab-save:active {
-    transform: translateY(0);
-}
+/* 悬浮保存按钮已移除（设置改为即时生效） */
 
 .settings-group {
     background: var(--surface);
@@ -2197,6 +2129,61 @@ header h1 {
     border-top-color: var(--primary-glow);
     animation: spin 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite reverse;
 }
+
+/* loading 蒙层的取消按钮（用于中止耗时 AI 请求） */
+.loading-cancel-btn {
+    margin-top: 24px;
+    padding: 10px 24px;
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 50px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+.loading-cancel-btn:hover {
+    background: var(--hover-bg, rgba(0,0,0,0.05));
+    color: var(--text);
+    border-color: var(--text-secondary);
+}
+.loading-cancel-btn:active {
+    transform: scale(0.97);
+}
+
+/* 模型预加载进度条 */
+.preload-progress-bar {
+    margin-top: 8px;
+    width: 100%;
+    height: 6px;
+    background: var(--border, #e5e7eb);
+    border-radius: 3px;
+    overflow: hidden;
+}
+.preload-progress-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--primary-gradient, linear-gradient(90deg, #6366f1, #8b5cf6));
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+/* 录音页引擎 badge（显示当前实际使用的识别引擎） */
+.engine-badge {
+    display: inline-block;
+    margin-left: 8px;
+    padding: 2px 10px;
+    border-radius: 50px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    vertical-align: middle;
+    line-height: 1.4;
+}
+.engine-badge-vosk { background: rgba(16, 185, 129, 0.12); color: #059669; }
+.engine-badge-whisper { background: rgba(99, 102, 241, 0.12); color: #4f46e5; }
+.engine-badge-sherpa { background: rgba(245, 158, 11, 0.12); color: #d97706; }
+.engine-badge-browser { background: rgba(100, 116, 139, 0.12); color: #475569; }
 
 /* ===== Animations ===== */
 @keyframes fadeInUp {

@@ -13,6 +13,9 @@ class AI {
     /**
      * 带重试的 fetch 请求（仅对网络错误自动重试1次）
      * 不对 API Key 错误、4xx 等业务错误重试
+     * @param {string} url
+     * @param {RequestInit} options - 可包含 signal 用于取消
+     * @param {number} retries
      */
     static async _fetchWithRetry(url, options, retries = 1) {
         for (let attempt = 0; attempt <= retries; attempt++) {
@@ -20,6 +23,8 @@ class AI {
                 const response = await fetch(url, options);
                 return response;
             } catch (err) {
+                // 用户主动取消（AbortController），直接抛出不重试
+                if (err.name === 'AbortError') throw err;
                 // 网络错误（断网、DNS失败、CORS等），且还有重试次数
                 if (attempt < retries && (err instanceof TypeError)) {
                     continue;
@@ -29,7 +34,7 @@ class AI {
         }
     }
 
-    static async generateFeedback(transcript, modules, studentName, subjectName, style, subjectId, promptTemplateId) {
+    static async generateFeedback(transcript, modules, studentName, subjectName, style, subjectId, promptTemplateId, signal) {
         const apiKey = Storage.getApiKey();
         if (!apiKey) {
             throw new Error('请先设置 API Key');
@@ -170,7 +175,8 @@ ${moduleInstructions}
                     temperature: 0.7,
                     max_tokens: this.MAX_OUTPUT_TOKENS,
                     response_format: { type: 'json_object' }
-                })
+                }),
+                signal
             });
 
             if (!response.ok) {
@@ -571,10 +577,10 @@ ${segment}
     /**
      * 通用聊天补全接口（供其他页面复用，避免重复编写 fetch/错误处理逻辑）
      * @param {Array<{role: string, content: string}>} messages - 消息列表
-     * @param {{temperature?: number, maxTokens?: number}} options - 可选参数
+     * @param {{temperature?: number, maxTokens?: number, signal?: AbortSignal}} options - 可选参数
      * @returns {Promise<string>} AI 返回的文本内容
      */
-    static async chatCompletion(messages, { temperature = 0.7, maxTokens = 1500 } = {}) {
+    static async chatCompletion(messages, { temperature = 0.7, maxTokens = 1500, signal } = {}) {
         const apiKey = Storage.getApiKey();
         if (!apiKey) throw new Error('请先设置 API Key');
 
@@ -590,7 +596,8 @@ ${segment}
                 messages,
                 temperature,
                 max_tokens: maxTokens
-            })
+            }),
+            signal
         });
 
         if (!response.ok) {
@@ -620,7 +627,7 @@ ${segment}
      * @param {string|null} subjectId - 科目ID
      * @returns {Promise<Array<{studentName: string, feedback: Array<{module: string, content: string}>}>>}
      */
-    static async generateGroupFeedback(transcript, modules, studentNames, subjectName, style, subjectId, promptTemplateId) {
+    static async generateGroupFeedback(transcript, modules, studentNames, subjectName, style, subjectId, promptTemplateId, signal) {
         const apiKey = Storage.getApiKey();
         if (!apiKey) throw new Error('请先设置 API Key');
 
@@ -795,7 +802,8 @@ ${moduleInstructions}
                     temperature: 0.7,
                     max_tokens: this.MAX_OUTPUT_TOKENS,
                     response_format: { type: 'json_object' }
-                })
+                }),
+                signal
             });
 
             if (!response.ok) {

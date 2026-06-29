@@ -18,9 +18,6 @@ class SettingsPage {
             </header>
 
             <div class="settings-sections">
-                <!-- 悬浮保存按钮（固定在右下角） -->
-                <button id="btn-save-settings" class="settings-fab-save">💾 保存</button>
-
                 <!-- API Key 设置 -->
                 <section class="settings-group">
                     <h3 style="font-size:1.05rem;font-weight:700;">🔑 API Key</h3>
@@ -440,32 +437,64 @@ class SettingsPage {
      * 使用可选链 + recorder 存在性检查，避免 recorder 未初始化时报错
      */
     _bindPreloadButtons() {
-        const btnWhisper = document.getElementById('btn-preload-whisper');
-        if (btnWhisper) {
-            btnWhisper.addEventListener('click', () => {
-                if (typeof recorder !== 'undefined' && recorder.preloadWhisper) {
-                    recorder.preloadWhisper();
+        // 统一的预加载封装：按钮 disabled + 进度条渲染
+        const setupPreload = (btnId, statusId, preloadFn, displayName) => {
+            const btn = document.getElementById(btnId);
+            if (!btn) return;
+            btn.addEventListener('click', async () => {
+                if (typeof recorder === 'undefined' || !preloadFn) return;
+                // 按钮 disable + 文案
+                const originalText = btn.textContent;
+                btn.disabled = true;
+                btn.textContent = '下载中…';
+                // 准备进度条容器
+                const statusEl = document.getElementById(statusId);
+                let barEl = statusEl ? statusEl.querySelector('.preload-progress-bar') : null;
+                if (statusEl && !barEl) {
+                    barEl = document.createElement('div');
+                    barEl.className = 'preload-progress-bar';
+                    const fill = document.createElement('div');
+                    fill.className = 'preload-progress-fill';
+                    barEl.appendChild(fill);
+                    statusEl.appendChild(barEl);
+                }
+                const onProgress = (p) => {
+                    const pct = (p && typeof p.progress === 'number') ? Math.max(0, Math.min(100, Math.round(p.progress))) : 0;
+                    const statusText = (p && p.status) ? p.status : '';
+                    if (statusEl) {
+                        const labelMap = { downloading: '下载中', ready: '已就绪' };
+                        const label = labelMap[statusText] || statusText;
+                        const txt = `模型状态：${label}${pct > 0 && statusText !== 'ready' ? ' ' + pct + '%' : ''}`;
+                        // 保留进度条 DOM，只更新文案和填充宽度
+                        if (barEl) {
+                            // textContent 会清空子节点，所以先取走进度条再写文案再放回
+                            barEl.remove();
+                            statusEl.textContent = txt;
+                            statusEl.appendChild(barEl);
+                            const fill = barEl.querySelector('.preload-progress-fill');
+                            if (fill) fill.style.width = (statusText === 'ready' ? 100 : pct) + '%';
+                        } else {
+                            statusEl.textContent = txt;
+                        }
+                    }
+                };
+                try {
+                    await preloadFn.call(recorder, onProgress);
+                } catch (err) {
+                    UI.showToast(`${displayName} 模型加载失败：` + err.message);
+                } finally {
+                    btn.disabled = false;
+                    btn.textContent = originalText;
                 }
             });
-        }
+        };
 
-        const btnVosk = document.getElementById('btn-preload-vosk');
-        if (btnVosk) {
-            btnVosk.addEventListener('click', () => {
-                if (typeof recorder !== 'undefined' && recorder.preloadVosk) {
-                    recorder.preloadVosk();
-                }
-            });
-        }
-
-        const btnSherpa = document.getElementById('btn-preload-sherpa');
-        if (btnSherpa) {
-            btnSherpa.addEventListener('click', () => {
-                if (typeof recorder !== 'undefined' && recorder.preloadSherpa) {
-                    recorder.preloadSherpa();
-                }
-            });
-        }
+        setupPreload('btn-preload-whisper', 'whisper-model-status',
+            recorder && recorder.preloadWhisper ? recorder.preloadWhisper.bind(recorder) : null, 'Whisper');
+        setupPreload('btn-preload-vosk', 'vosk-model-status',
+            recorder && recorder.preloadVosk ? recorder.preloadVosk.bind(recorder) : null, 'Vosk');
+        setupPreload('btn-preload-sherpa', 'sherpa-model-status',
+            recorder && recorder.preloadSherpa ? recorder.preloadSherpa.bind(recorder) : null, 'Sherpa');
     }
 
     renderSubjectsList() {
@@ -841,6 +870,68 @@ class SettingsPage {
         }
     }
 
+    /**
+     * 静默保存所有设置（不含 Toast 和 API Key 验证，由调用方决定反馈）
+     * 从原保存按钮逻辑提取，供各控件的即时保存调用
+     */
+    _saveSettingsSilent() {
+        const apiKey = document.getElementById('api-key')?.value.trim() || '';
+        const apiBaseUrl = document.getElementById('api-base-url')?.value.trim() || '';
+        Storage.setApiKey(apiKey);
+        // apiBaseUrl 无论是否为空都保存，以支持清空自定义地址回退到默认值
+        Storage.setApiBaseUrl(apiBaseUrl);
+
+        // 保存风格设置
+        const toneEl = document.querySelector('input[name="tone"]:checked');
+        const currentStyle = Storage.getStyle();
+        const minLength = currentStyle.minLength || 50;
+        const maxLength = currentStyle.maxLength || 150;
+        const nameShorten = document.getElementById('name-shorten')?.checked ?? true;
+        const useEmoji = document.getElementById('use-emoji')?.checked ?? false;
+        const emojiPosition = document.querySelector('input[name="emoji-position"]:checked')?.value || 'content';
+        const useBulletPoints = document.getElementById('use-bullet-points')?.checked ?? false;
+        const includeParentHelp = document.getElementById('include-parent-help')?.checked ?? false;
+        const strictInput = document.getElementById('strict-input')?.checked ?? true;
+        const customPrompt = document.getElementById('custom-prompt')?.value.trim() || '';
+        const useCustomDate = document.getElementById('use-custom-date')?.checked ?? false;
+        const customDate = document.getElementById('custom-date')?.value || '';
+
+        const moduleLengths = {};
+        document.querySelectorAll('.module-length-item').forEach(item => {
+            const moduleName = item.querySelector('.module-min-length')?.dataset.module;
+            const min = parseInt(item.querySelector('.module-min-length')?.value) || 50;
+            const max = parseInt(item.querySelector('.module-max-length')?.value) || 150;
+            if (moduleName) {
+                moduleLengths[moduleName] = { min, max };
+            }
+        });
+
+        Storage.saveStyle({
+            tone: toneEl ? toneEl.value : 'formal',
+            minLength, maxLength, moduleLengths,
+            nameShorten, useEmoji, emojiPosition, useBulletPoints,
+            includeParentHelp, strictInput, customPrompt,
+            useCustomDate, customDate, language: 'zh'
+        });
+
+        // 保存模块状态
+        const modules = [];
+        document.querySelectorAll('.modules-manage-list .manage-item').forEach(item => {
+            const checkbox = item.querySelector('input[type="checkbox"]');
+            const name = item.querySelector('.manage-item-name').textContent;
+            const isCustom = item.querySelector('.delete-btn') !== null;
+            const descInput = item.querySelector('.module-desc-input');
+            const description = descInput ? descInput.value.trim() : '';
+            modules.push({
+                name,
+                enabled: checkbox.checked,
+                custom: isCustom,
+                ...(isCustom && description ? { description } : {})
+            });
+        });
+        Storage.saveModules(modules);
+    }
+
     bindEvents() {
         // 显示/隐藏 API Key
         document.getElementById('btn-toggle-key')?.addEventListener('click', () => {
@@ -851,6 +942,67 @@ class SettingsPage {
         document.getElementById('apikey-help')?.addEventListener('click', (e) => {
             e.preventDefault();
             app.openHelpModal();
+        });
+
+        // ===== 即时保存（去掉保存按钮，全部即时生效 + Toast）=====
+
+        // API Key 防抖即时保存 + 重新验证
+        let apiKeyTimer = null;
+        const apiKeyInput = document.getElementById('api-key');
+        apiKeyInput?.addEventListener('input', () => {
+            clearTimeout(apiKeyTimer);
+            apiKeyTimer = setTimeout(() => {
+                Storage.setApiKey(apiKeyInput.value.trim());
+                UI.showToast('API Key 已保存', 'info');
+                this.checkApiKey();
+            }, 600);
+        });
+
+        // API Base URL 防抖即时保存 + 重新验证
+        let apiBaseUrlTimer = null;
+        const apiBaseUrlInput = document.getElementById('api-base-url');
+        apiBaseUrlInput?.addEventListener('input', () => {
+            clearTimeout(apiBaseUrlTimer);
+            apiBaseUrlTimer = setTimeout(() => {
+                Storage.setApiBaseUrl(apiBaseUrlInput.value.trim());
+                UI.showToast('API 地址已保存', 'info');
+                this.checkApiKey();
+            }, 600);
+        });
+
+        // 风格选项（tone、emoji 位置）即时保存
+        const instantSaveSelectors = [
+            'input[name="tone"]',
+            'input[name="emoji-position"]',
+            '#use-bullet-points',
+            '#use-emoji',
+            '#name-shorten',
+            '#strict-input',
+            '#include-parent-help',
+            '#use-custom-date',
+            '#custom-date',
+            '.modules-manage-list input[type="checkbox"]'
+        ];
+        instantSaveSelectors.forEach(selector => {
+            this.container.querySelectorAll(selector).forEach(el => {
+                el.addEventListener('change', () => {
+                    this._saveSettingsSilent();
+                    UI.showToast('设置已保存', 'info');
+                });
+            });
+        });
+
+        // 文本类输入防抖即时保存（custom-prompt、模块字数、模块描述）
+        let textSaveTimer = null;
+        const debouncedTextSave = () => {
+            clearTimeout(textSaveTimer);
+            textSaveTimer = setTimeout(() => {
+                this._saveSettingsSilent();
+                UI.showToast('设置已保存', 'info');
+            }, 600);
+        };
+        this.container.querySelectorAll('#custom-prompt, .module-length-item input, .module-desc-input').forEach(el => {
+            el.addEventListener('input', debouncedTextSave);
         });
 
         // 风格选项点击效果
@@ -880,7 +1032,8 @@ class SettingsPage {
             }
         });
 
-        // 语音识别引擎选项切换
+        // 语音识别引擎选项切换（即时生效 + Toast）
+        const providerNames = { auto: '智能选择', sherpa: 'Sherpa', vosk: 'Vosk', whisper: 'Whisper', browser: '浏览器内置' };
         document.querySelectorAll('input[name="speech-provider"]').forEach(radio => {
             radio.addEventListener('change', () => {
                 const provider = radio.value;
@@ -902,6 +1055,8 @@ class SettingsPage {
 
                 // 重新绑定预加载按钮（因为 innerHTML 替换了 DOM，旧监听器随旧 DOM 销毁）
                 this._bindPreloadButtons();
+
+                UI.showToast(`已切换到${providerNames[provider] || provider}引擎`);
             });
         });
 
@@ -1005,89 +1160,6 @@ class SettingsPage {
                 const subjectId = btn.dataset.subjectId;
                 this.showApplyTemplateToSubjectPicker(subjectId);
             });
-        });
-
-        document.getElementById('btn-save-settings')?.addEventListener('click', async () => {
-            const apiKey = document.getElementById('api-key').value.trim();
-            const apiBaseUrl = document.getElementById('api-base-url').value.trim();
-
-            Storage.setApiKey(apiKey);
-            // apiBaseUrl 无论是否为空都保存，以支持清空自定义地址回退到默认值
-            Storage.setApiBaseUrl(apiBaseUrl);
-
-            // 保存风格设置（包含所有新配置）
-            const toneEl = document.querySelector('input[name="tone"]:checked');
-            // 从当前已保存的 style 中读取 minLength/maxLength 作为后备值（全局字数输入已移除）
-            const currentStyle = Storage.getStyle();
-            const minLength = currentStyle.minLength || 50;
-            const maxLength = currentStyle.maxLength || 150;
-            const nameShorten = document.getElementById('name-shorten')?.checked ?? true;
-            const useEmoji = document.getElementById('use-emoji')?.checked ?? false;
-            const emojiPosition = document.querySelector('input[name="emoji-position"]:checked')?.value || 'content';
-            const useBulletPoints = document.getElementById('use-bullet-points')?.checked ?? false;
-            const includeParentHelp = document.getElementById('include-parent-help')?.checked ?? false;
-            const strictInput = document.getElementById('strict-input')?.checked ?? true;
-            const customPrompt = document.getElementById('custom-prompt')?.value.trim() || '';
-            const useCustomDate = document.getElementById('use-custom-date')?.checked ?? false;
-            const customDate = document.getElementById('custom-date')?.value || '';
-
-            // 收集按模块字数限制
-            const moduleLengths = {};
-            document.querySelectorAll('.module-length-item').forEach(item => {
-                const moduleName = item.querySelector('.module-min-length')?.dataset.module;
-                const min = parseInt(item.querySelector('.module-min-length')?.value) || 50;
-                const max = parseInt(item.querySelector('.module-max-length')?.value) || 150;
-                if (moduleName) {
-                    moduleLengths[moduleName] = { min, max };
-                }
-            });
-
-            Storage.saveStyle({
-                tone: toneEl ? toneEl.value : 'formal',
-                minLength,
-                maxLength,
-                moduleLengths,
-                nameShorten,
-                useEmoji,
-                emojiPosition,
-                useBulletPoints,
-                includeParentHelp,
-                strictInput,
-                customPrompt,
-                useCustomDate,
-                customDate,
-                language: 'zh'
-            });
-
-            // 保存模块状态
-            const modules = [];
-            document.querySelectorAll('.modules-manage-list .manage-item').forEach(item => {
-                const checkbox = item.querySelector('input[type="checkbox"]');
-                const name = item.querySelector('.manage-item-name').textContent;
-                const isCustom = item.querySelector('.delete-btn') !== null;
-                const descInput = item.querySelector('.module-desc-input');
-                const description = descInput ? descInput.value.trim() : '';
-                modules.push({
-                    name,
-                    enabled: checkbox.checked,
-                    custom: isCustom,
-                    ...(isCustom && description ? { description } : {})
-                });
-            });
-            Storage.saveModules(modules);
-
-            // 保存语音识别配置
-            const speechProvider = document.querySelector('input[name="speech-provider"]:checked');
-            Storage.saveSpeechConfig({
-                provider: speechProvider ? speechProvider.value : 'browser'
-            });
-
-            // 科目专属模板已通过底部弹窗即时保存，此处无需再读取
-
-            UI.showToast('设置已保存');
-
-            // 重新验证 API Key
-            await this.checkApiKey();
         });
 
         document.getElementById('btn-export')?.addEventListener('click', () => this.exportData());

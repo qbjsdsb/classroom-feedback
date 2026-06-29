@@ -273,7 +273,7 @@ const UI = {
         });
     },
     
-    showLoading(message) {
+    showLoading(message, onCancel) {
         // 已存在 overlay 时仅更新消息，避免重复调用产生相同 id 的多个 overlay 导致残留无法移除
         let overlay = document.getElementById('loading-overlay');
         if (overlay) {
@@ -283,6 +283,23 @@ const UI = {
             if (overlay._hideTimer) { clearTimeout(overlay._hideTimer); overlay._hideTimer = null; }
             const msgEl = overlay.querySelector('#loading-message');
             if (msgEl) msgEl.textContent = message;
+            // 更新取消按钮（若新调用方不需要取消，移除已有按钮）
+            const existingCancelBtn = overlay.querySelector('.loading-cancel-btn');
+            if (onCancel && typeof onCancel === 'function') {
+                if (!existingCancelBtn) {
+                    const btn = document.createElement('button');
+                    btn.className = 'loading-cancel-btn';
+                    btn.textContent = '取消';
+                    btn.setAttribute('aria-label', '取消操作');
+                    btn.addEventListener('click', () => {
+                        try { onCancel(); } catch (e) {}
+                        this.hideLoading();
+                    });
+                    overlay.appendChild(btn);
+                }
+            } else if (existingCancelBtn) {
+                existingCancelBtn.remove();
+            }
             return;
         }
         overlay = document.createElement('div');
@@ -293,6 +310,17 @@ const UI = {
             <div class="loading-spinner" aria-hidden="true"></div>
             <p id="loading-message" style="margin-top: 20px; color: var(--text-secondary); font-size: 0.95rem;">${message}</p>
         `;
+        if (onCancel && typeof onCancel === 'function') {
+            const btn = document.createElement('button');
+            btn.className = 'loading-cancel-btn';
+            btn.textContent = '取消';
+            btn.setAttribute('aria-label', '取消操作');
+            btn.addEventListener('click', () => {
+                try { onCancel(); } catch (e) {}
+                this.hideLoading();
+            });
+            overlay.appendChild(btn);
+        }
         document.body.appendChild(overlay);
     },
 
